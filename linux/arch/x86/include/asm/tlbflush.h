@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: GPL-2.0-only */
 #ifndef _ASM_X86_TLBFLUSH_H
 #define _ASM_X86_TLBFLUSH_H
 
@@ -256,11 +257,12 @@ static inline void flush_tlb_page(struct vm_area_struct *vma, unsigned long a)
 void native_flush_tlb_others(const struct cpumask *cpumask,
 			     const struct flush_tlb_info *info);
 
-
+/* eCS */
 #ifdef CONFIG_PARAVIRT_TLB
 void paravirt_flush_tlb_others(const struct cpumask *cpumask,
                                const struct flush_tlb_info *info);
 #endif
+/*******/
 
 #define TLBSTATE_OK	1
 #define TLBSTATE_LAZY	2

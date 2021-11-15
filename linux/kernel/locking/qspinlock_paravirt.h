@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: GPL-2.0-only */
 #ifndef _GEN_PV_LOCK_SLOWPATH
 #error "do not include this file"
 #endif
@@ -59,6 +60,7 @@ struct pv_node {
  */
 #include "qspinlock_stat.h"
 
+/* eCS */
 #ifdef CONFIG_QUEUED_NUMA_LOCK_STEAL
 #define MAX_NUMA_STEAL_THRESHOLD        32
 
@@ -87,6 +89,7 @@ static __always_inline void pv_update_serving_node(int flag)
 #define pv_update_serving_node(flag) do { } while (0)
 
 #endif
+/*******/
 
 /*
  * By replacing the regular queued_spin_trylock() with the function below,
@@ -95,6 +98,7 @@ static __always_inline void pv_update_serving_node(int flag)
  * bit is off, it helps to reduce the performance impact of lock waiter
  * preemption without the drawback of lock starvation.
  */
+/* eCS */
 #define queued_spin_trylock(l, f)	pv_queued_spin_steal_lock(l, f)
 static inline bool pv_queued_spin_steal_lock(struct qspinlock *lock,
                                              int flag)
@@ -130,6 +134,7 @@ static inline bool pv_queued_spin_steal_lock(struct qspinlock *lock,
 #endif
 	return false;
 }
+/*******/
 
 /*
  * The pending bit is used by the queue head vCPU to indicate that it

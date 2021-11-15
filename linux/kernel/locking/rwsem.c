@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-only
 /* kernel/rwsem.c: R/W semaphores, public implementation
  *
  * Written by David Howells (dhowells@redhat.com).
@@ -11,7 +12,9 @@
 #include <linux/export.h>
 #include <linux/rwsem.h>
 #include <linux/atomic.h>
+/* eCS */
 #include <linux/paravirt.h>
+/*******/
 
 #include "rwsem.h"
 
@@ -25,7 +28,9 @@ void __sched down_read(struct rw_semaphore *sem)
 
 	LOCK_CONTENDED(sem, __down_read_trylock, __down_read);
 	rwsem_set_reader_owned(sem);
+/* eCS */
         inc_rwsem_rd_count();
+/*******/
 }
 
 EXPORT_SYMBOL(down_read);
@@ -40,7 +45,9 @@ int down_read_trylock(struct rw_semaphore *sem)
 	if (ret == 1) {
 		rwsem_acquire_read(&sem->dep_map, 0, 1, _RET_IP_);
 		rwsem_set_reader_owned(sem);
+/* eCS */
                 inc_rwsem_rd_count();
+/*******/
 	}
 	return ret;
 }
@@ -57,7 +64,9 @@ void __sched down_write(struct rw_semaphore *sem)
 
 	LOCK_CONTENDED(sem, __down_write_trylock, __down_write);
 	rwsem_set_owner(sem);
+/* eCS */
         inc_rwsem_wr_count();
+/*******/
 }
 
 EXPORT_SYMBOL(down_write);
@@ -76,7 +85,9 @@ int __sched down_write_killable(struct rw_semaphore *sem)
 	}
 
 	rwsem_set_owner(sem);
+/* eCS */
         inc_rwsem_wr_count();
+/*******/
 	return 0;
 }
 
@@ -92,7 +103,9 @@ int down_write_trylock(struct rw_semaphore *sem)
 	if (ret == 1) {
 		rwsem_acquire(&sem->dep_map, 0, 1, _RET_IP_);
 		rwsem_set_owner(sem);
+/* eCS */
                 inc_rwsem_wr_count();
+/*******/
 	}
 
 	return ret;
@@ -108,7 +121,9 @@ void up_read(struct rw_semaphore *sem)
 	rwsem_release(&sem->dep_map, 1, _RET_IP_);
 
 	__up_read(sem);
+/* eCS */
         dec_rwsem_rd_count();
+/*******/
 }
 
 EXPORT_SYMBOL(up_read);
@@ -122,7 +137,9 @@ void up_write(struct rw_semaphore *sem)
 
 	rwsem_clear_owner(sem);
 	__up_write(sem);
+/* eCS */
         dec_rwsem_wr_count();
+/*******/
 }
 
 EXPORT_SYMBOL(up_write);
@@ -136,8 +153,10 @@ void downgrade_write(struct rw_semaphore *sem)
 
 	rwsem_set_reader_owned(sem);
 	__downgrade_write(sem);
+/* eCS */
         dec_rwsem_wr_count();
         inc_rwsem_rd_count();
+/*******/
 }
 
 EXPORT_SYMBOL(downgrade_write);

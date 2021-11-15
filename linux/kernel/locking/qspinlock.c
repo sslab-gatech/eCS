@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 /*
  * Queued spinlock
  *
@@ -256,7 +257,9 @@ static __always_inline void __pv_kick_node(struct qspinlock *lock,
 static __always_inline u32  __pv_wait_head_or_lock(struct qspinlock *lock,
 						   struct mcs_spinlock *node)
 						   { return 0; }
+/* eCS */
 static __always_inline void __pv_update_serving_node(int flag) { }
+/*******/
 
 #define pv_enabled()		false
 
@@ -264,7 +267,9 @@ static __always_inline void __pv_update_serving_node(int flag) { }
 #define pv_wait_node		__pv_wait_node
 #define pv_kick_node		__pv_kick_node
 #define pv_wait_head_or_lock	__pv_wait_head_or_lock
+/* eCS */
 #define pv_update_serving_node  __pv_update_serving_node
+/*******/
 
 #ifdef CONFIG_PARAVIRT_SPINLOCKS
 #define queued_spin_lock_slowpath	native_queued_spin_lock_slowpath
@@ -415,7 +420,9 @@ void queued_spin_lock_slowpath(struct qspinlock *lock, u32 val)
 	struct mcs_spinlock *prev, *next, *node;
 	u32 new, old, tail;
 	int idx;
+/* eCS */
         int steal_flag = 0;
+/*******/
 
 	BUILD_BUG_ON(CONFIG_NR_CPUS >= (1U << _Q_TAIL_CPU_BITS));
 
@@ -508,10 +515,12 @@ queue:
 	 * attempt the trylock once more in the hope someone let go while we
 	 * weren't watching.
 	 */
+/* eCS */
 	if (queued_spin_trylock(lock, 0)) {
                 steal_flag = 1;
 		goto release;
         }
+/*******/
 
 	/*
 	 * We have already touched the queueing cacheline; don't bother with
@@ -625,7 +634,9 @@ release:
 	/*
 	 * release the node
 	 */
+/* eCS */
         pv_update_serving_node(steal_flag);
+/*******/
 	__this_cpu_dec(mcs_nodes[0].count);
 }
 EXPORT_SYMBOL(queued_spin_lock_slowpath);
@@ -643,7 +654,9 @@ EXPORT_SYMBOL(queued_spin_lock_slowpath);
 #undef pv_wait_node
 #undef pv_kick_node
 #undef pv_wait_head_or_lock
+/* eCS */
 #undef pv_update_serving_node
+/*******/
 
 #undef  queued_spin_lock_slowpath
 #define queued_spin_lock_slowpath	__pv_queued_spin_lock_slowpath

@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: GPL-2.0-only */
 #ifndef _LINUX_SCHED_H
 #define _LINUX_SCHED_H
 
@@ -527,10 +528,12 @@ struct task_struct {
 	/* -1 unrunnable, 0 runnable, >0 stopped: */
 	volatile long			state;
 
+/* eCS */
 #ifdef CONFIG_PARAVIRT_VCS
         volatile long                   vcs_preempt_state;
         int                             temp_vcs_count;
 #endif
+/*******/
 
 	/*
 	 * This begins the randomizable portion of task_struct. Only
@@ -1382,7 +1385,9 @@ static inline int set_cpus_allowed_ptr(struct task_struct *p, const struct cpuma
 
 extern int yield_to(struct task_struct *p, bool preempt);
 extern void set_user_nice(struct task_struct *p, long nice);
+/* eCS */
 extern void set_user_nice_wlock(struct task_struct *p, long nice);
+/*******/
 extern int task_prio(const struct task_struct *p);
 
 /**
@@ -1623,6 +1628,7 @@ static inline void set_task_cpu(struct task_struct *p, unsigned int cpu)
  */
 #ifndef vcpu_is_preempted
 # define vcpu_is_preempted(cpu)	false
+/* eCS */
 #endif
 
 #ifndef vcpu_get_fake_preempt_count
@@ -1643,6 +1649,7 @@ static inline void set_task_cpu(struct task_struct *p, unsigned int cpu)
 
 #ifndef vcpu_pcpu_is_overloaded
 #define vcpu_pcpu_is_overloaded(cpu) false
+/*******/
 #endif
 
 extern long sched_setaffinity(pid_t pid, const struct cpumask *new_mask);

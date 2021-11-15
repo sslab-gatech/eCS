@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: GPL-2.0-only */
 #ifndef _ASM_X86_PARAVIRT_H
 #define _ASM_X86_PARAVIRT_H
 /* Various instructions on x86 need to be replaced for
@@ -15,6 +16,7 @@
 #include <linux/cpumask.h>
 #include <asm/frame.h>
 
+/* eCS */
 #define KVM_NO_CS               (0)
 #define KVM_RCU_READER          (1 << 1)
 #define KVM_RCU_WRITER          (1 << 2)
@@ -27,6 +29,7 @@
 #define KVM_MUTEX_HOLDER        (1 << 1)
 #define KVM_RWSEM_WRITER        (1 << 2)
 #define KVM_RWSEM_READER        (1 << 3)
+/*******/
 
 static inline void load_sp0(struct tss_struct *tss,
 			     struct thread_struct *thread)
@@ -740,6 +743,7 @@ static __always_inline bool pv_vcpu_is_preempted(long cpu)
 
 #endif /* SMP && PARAVIRT_SPINLOCKS */
 
+/* eCS */
 #if defined(CONFIG_PARAVIRT_VCS)
 
 static __always_inline bool pv_vcpu_is_preempted_other(long cpu)
@@ -874,6 +878,7 @@ static inline void update_ipi_cpumask(struct cpumask *mask)
 }
 
 #endif /* CONFIG_PARAVIRT_IPI */
+/*******/
 
 #ifdef CONFIG_X86_32
 #define PV_SAVE_REGS "pushl %ecx; pushl %edx;"

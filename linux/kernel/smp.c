@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-only
 /*
  * Generic helpers for smp ipi calls
  *
@@ -19,7 +20,9 @@
 #include <linux/sched.h>
 #include <linux/sched/idle.h>
 #include <linux/hypervisor.h>
+/* eCS */
 #include <linux/paravirt.h>
+/*******/
 
 #include "smpboot.h"
 
@@ -456,9 +459,11 @@ void smp_call_function_many(const struct cpumask *mask,
 			__cpumask_set_cpu(cpu, cfd->cpumask_ipi);
 	}
 
+/* eCS */
 	/* Send a message to all CPUs in the map */
         send_call_function_ipi_mask(cfd->cpumask_ipi);
         update_ipi_cpumask(cfd->cpumask);
+/*******/
 
 	if (wait) {
 		for_each_cpu(cpu, cfd->cpumask) {

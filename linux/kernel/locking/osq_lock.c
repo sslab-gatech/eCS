@@ -1,7 +1,10 @@
+// SPDX-License-Identifier: GPL-2.0-only
 #include <linux/percpu.h>
 #include <linux/sched.h>
 #include <linux/osq_lock.h>
+/* eCS */
 #include <linux/paravirt.h>
+/*******/
 
 /*
  * An MCS like lock especially tailored for optimistic spinning for sleeping
@@ -127,8 +130,10 @@ bool osq_lock(struct optimistic_spin_queue *lock)
 		 * Use vcpu_is_preempted() to avoid waiting for a preempted
 		 * lock holder:
 		 */
+/* eCS */
 		if (need_resched() || is_vcpu_preempted(node_cpu(node->prev)))
 			goto unqueue;
+/*******/
 
 		cpu_relax();
 	}

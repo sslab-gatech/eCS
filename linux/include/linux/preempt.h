@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: GPL-2.0-only */
 #ifndef __LINUX_PREEMPT_H
 #define __LINUX_PREEMPT_H
 
@@ -293,7 +294,9 @@ struct preempt_notifier;
  * difference is intentional and depended upon by its users.
  */
 struct preempt_ops {
+/* eCS */
         int  (*sched_check)(struct preempt_notifier *notifier);
+/*******/
 	void (*sched_in)(struct preempt_notifier *notifier, int cpu);
 	void (*sched_out)(struct preempt_notifier *notifier,
 			  struct task_struct *next);
@@ -315,7 +318,9 @@ void preempt_notifier_inc(void);
 void preempt_notifier_dec(void);
 void preempt_notifier_register(struct preempt_notifier *notifier);
 void preempt_notifier_unregister(struct preempt_notifier *notifier);
+/* eCS */
 int  preempt_notifier_sched_check(struct task_struct *curr);
+/*******/
 
 static inline void preempt_notifier_init(struct preempt_notifier *notifier,
 				     struct preempt_ops *ops)

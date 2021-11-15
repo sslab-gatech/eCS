@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: GPL-2.0-only */
 #ifndef _ASM_X86_QSPINLOCK_H
 #define _ASM_X86_QSPINLOCK_H
 
@@ -17,9 +18,11 @@ static inline void native_queued_spin_unlock(struct qspinlock *lock)
 	smp_store_release((u8 *)lock, 0);
 }
 
+/* eCS */
 #if defined(CONFIG_PARAVIRT_SPINLOCKS) || defined(CONFIG_PARAVIRT_VCS)
 DECLARE_PER_CPU_READ_MOSTLY(int, cpu_number);
 #endif
+/*******/
 
 #ifdef CONFIG_PARAVIRT_SPINLOCKS
 extern void native_queued_spin_lock_slowpath(struct qspinlock *lock, u32 val);
@@ -30,17 +33,21 @@ extern void __raw_callee_save___pv_queued_spin_unlock(struct qspinlock *lock);
 static inline void queued_spin_lock_slowpath(struct qspinlock *lock, u32 val)
 {
 	pv_queued_spin_lock_slowpath(lock, val);
+/* eCS */
 #ifdef CONFIG_PARAVIRT_SPINLOCK_VCS
         vcpu_preempt_count(this_cpu_read(cpu_number), 1, KVM_SPN_HOLDER);
 #endif
+/*******/
 }
 
 static inline void queued_spin_unlock(struct qspinlock *lock)
 {
 	pv_queued_spin_unlock(lock);
+/* eCS */
 #ifdef CONFIG_PARAVIRT_SPINLOCK_VCS
         vcpu_preempt_count(this_cpu_read(cpu_number), -1, KVM_NO_CS);
 #endif
+/*******/
 }
 
 #define vcpu_is_preempted vcpu_is_preempted
@@ -53,9 +60,11 @@ static inline bool vcpu_is_preempted(long cpu)
 static inline void queued_spin_unlock(struct qspinlock *lock)
 {
 	native_queued_spin_unlock(lock);
+/* eCS */
 #ifdef CONFIG_PARAVIRT_SPINLOCK_VCS
         vcpu_preempt_count(this_cpu_read(cpu_number), -1, KVM_NO_CS);
 #endif
+/*******/
 }
 #endif
 

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-only
 /*
  * kernel/locking/mutex.c
  *
@@ -22,14 +23,18 @@
 #include <linux/sched/signal.h>
 #include <linux/sched/rt.h>
 #include <linux/sched/wake_q.h>
+/* eCS */
 #include <linux/sched/stat.h>
+/*******/
 #include <linux/sched/debug.h>
 #include <linux/export.h>
 #include <linux/spinlock.h>
 #include <linux/interrupt.h>
 #include <linux/debug_locks.h>
 #include <linux/osq_lock.h>
+/* eCS */
 #include <linux/paravirt.h>
+/*******/
 
 #ifdef CONFIG_DEBUG_MUTEXES
 # include "mutex-debug.h"
@@ -241,7 +246,9 @@ void __sched mutex_lock(struct mutex *lock)
 
 	if (!__mutex_trylock_fast(lock))
 		__mutex_lock_slowpath(lock);
+/* eCS */
         inc_mutex_count();
+/*******/
 }
 EXPORT_SYMBOL(mutex_lock);
 #endif
@@ -443,11 +450,13 @@ bool mutex_spin_on_owner(struct mutex *lock, struct task_struct *owner,
 		 * Use vcpu_is_preempted to detect lock holder preemption issue.
 		 */
 		if (!owner->on_cpu || need_resched() ||
+/* eCS */
 #ifdef CONFIG_PARAVIRT_VCS
                                 vcpu_is_preempted_other(task_cpu(owner))) {
 #else
 				vcpu_is_preempted(task_cpu(owner))) {
 #endif
+/*******/
 			ret = false;
 			break;
 		}
@@ -483,7 +492,9 @@ static inline int mutex_can_spin_on_owner(struct mutex *lock)
 	 * on cpu or its cpu is preempted
 	 */
 	if (owner)
+/* eCS */
 		retval = owner->on_cpu && !is_vcpu_preempted(task_cpu(owner));
+/*******/
 	rcu_read_unlock();
 
 	/*
@@ -619,7 +630,9 @@ void __sched mutex_unlock(struct mutex *lock)
 		return;
 #endif
 	__mutex_unlock_slowpath(lock, _RET_IP_);
+/* eCS */
         dec_mutex_count();
+/*******/
 }
 EXPORT_SYMBOL(mutex_unlock);
 
@@ -838,6 +851,7 @@ __mutex_lock_common(struct mutex *lock, long state, unsigned int subclass,
 		}
 
 		spin_unlock(&lock->wait_lock);
+/* eCS */
 #ifdef CONFIG_PARAVIRT_VCS
                 if (single_task_running() && !vcpu_pcpu_is_overloaded(task_cpu(current))) {
                         set_current_state(TASK_RUNNING);
@@ -846,6 +860,7 @@ __mutex_lock_common(struct mutex *lock, long state, unsigned int subclass,
                 } else
                         set_current_state(state);
 #endif
+/*******/
 		schedule_preempt_disabled();
 
 		/*
@@ -1194,10 +1209,12 @@ int __sched mutex_trylock(struct mutex *lock)
 {
 	bool locked = __mutex_trylock(lock);
 
+/* eCS */
 	if (locked) {
                 inc_mutex_count();
 		mutex_acquire(&lock->dep_map, 0, 1, _RET_IP_);
         }
+/*******/
 
 	return locked;
 }

@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: GPL-2.0-only */
 /*
  * Queued spinlock
  *
@@ -79,6 +80,7 @@ static __always_inline int queued_spin_is_contended(struct qspinlock *lock)
  * @lock : Pointer to queued spinlock structure
  * Return: 1 if lock acquired, 0 if failed
  */
+/* eCS */ 
 #ifdef CONFIG_PARAVIRT_SPINLOCKS
 #include <asm/paravirt.h>
 DECLARE_PER_CPU_READ_MOSTLY(int, cpu_number);
@@ -86,16 +88,21 @@ DECLARE_PER_CPU_READ_MOSTLY(int, cpu_number);
 
 static __always_inline int queued_spin_trylock(struct qspinlock *lock,
                                                int flag)
+/*******/
 {
 	if (!atomic_read(&lock->val) &&
+/* eCS */ 
 	   (atomic_cmpxchg_acquire(&lock->val, 0, _Q_LOCKED_VAL) == 0)) {
 #ifdef CONFIG_PARAVIRT_SPINLOCK_VCS
                 if (flag)
                         vcpu_preempt_count(this_cpu_read(cpu_number), 1,
                                            KVM_SPN_HOLDER);
 #endif
+/*******/
 		return 1;
+/* eCS */ 
         }
+/*******/
 	return 0;
 }
 
@@ -110,16 +117,22 @@ static __always_inline void queued_spin_lock(struct qspinlock *lock)
 	u32 val;
 
 	val = atomic_cmpxchg_acquire(&lock->val, 0, _Q_LOCKED_VAL);
+/* eCS */ 
 	if (likely(val == 0)) {
 #ifdef CONFIG_PARAVIRT_SPINLOCK_VCS
                 vcpu_preempt_count(this_cpu_read(cpu_number), 1, KVM_SPN_HOLDER);
 #endif
+/*******/
 		return;
+/* eCS */ 
         }
+/*******/
 	queued_spin_lock_slowpath(lock, val);
+/* eCS */ 
 #ifdef CONFIG_PARAVIRT_SPINLOCK_VCS
         vcpu_preempt_count(this_cpu_read(cpu_number), 1, KVM_SPN_HOLDER);
 #endif
+/*******/
 }
 
 #ifndef queued_spin_unlock
@@ -132,9 +145,11 @@ static __always_inline void queued_spin_unlock(struct qspinlock *lock)
 	/*
 	 * unlock() needs release semantics:
 	 */
+/* eCS */ 
 #ifdef CONFIG_PARAVIRT_SPINLOCK_VCS
         vcpu_preempt_count(this_cpu_read(cpu_number), -1, KVM_NO_CS);
 #endif
+/*******/
 	(void)atomic_sub_return_release(_Q_LOCKED_VAL, &lock->val);
 }
 #endif
@@ -154,7 +169,9 @@ static __always_inline bool virt_spin_lock(struct qspinlock *lock)
 #define arch_spin_is_contended(l)	queued_spin_is_contended(l)
 #define arch_spin_value_unlocked(l)	queued_spin_value_unlocked(l)
 #define arch_spin_lock(l)		queued_spin_lock(l)
+/* eCS */ 
 #define arch_spin_trylock(l)		queued_spin_trylock(l, 1)
+/*******/
 #define arch_spin_unlock(l)		queued_spin_unlock(l)
 #define arch_spin_lock_flags(l, f)	queued_spin_lock(l)
 #define arch_spin_unlock_wait(l)	queued_spin_unlock_wait(l)

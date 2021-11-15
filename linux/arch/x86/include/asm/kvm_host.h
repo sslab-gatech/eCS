@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: GPL-2.0-only */
 /*
  * Kernel-based Virtual Machine driver for Linux
  *
@@ -35,8 +36,10 @@
 #include <asm/asm.h>
 #include <asm/kvm_page_track.h>
 
+/* eCS */
 #define KVM_MAX_VCPUS 512
 #define KVM_SOFT_MAX_VCPUS 384
+/*******/
 #define KVM_MAX_VCPU_ID 1023
 #define KVM_USER_MEM_SLOTS 509
 /* memory slots that are not exposed to userspace */
@@ -590,12 +593,14 @@ struct kvm_vcpu_arch {
 		struct kvm_steal_time steal;
 	} st;
 
+/* eCS */
 #ifdef CONFIG_PARAVIRT_IPI
         struct {
                 struct gfn_to_hva_cache cpus;
                 struct kvm_ipi_cpu_list cpu_list;
         } ipi_cpu_list;
 #endif
+/*******/
 
 	u64 tsc_offset;
 	u64 last_guest_tsc;
@@ -881,9 +886,11 @@ struct kvm_vcpu_stat {
 	u64 irq_injections;
 	u64 nmi_injections;
 	u64 req_event;
+/* eCS */
         u64 fake_vcs;
         u64 vcs;
         u64 avoided_preempts;
+/*******/
 };
 
 struct x86_instruction_info;
@@ -960,9 +967,11 @@ struct kvm_x86_ops {
 	u32 (*get_pkru)(struct kvm_vcpu *vcpu);
 
 	void (*tlb_flush)(struct kvm_vcpu *vcpu);
+/* eCS */
         void (*tlb_flush_addr)(struct kvm_vcpu *vcpu, unsigned long addr);
 
         void (*get_vpid)(struct kvm_vcpu *vcpu);
+/*******/
 
 	void (*run)(struct kvm_vcpu *vcpu);
 	int (*handle_exit)(struct kvm_vcpu *vcpu);

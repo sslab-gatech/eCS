@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-only
 /*
  *  kernel/sched/core.c
  *
@@ -27,7 +28,9 @@
 #include <linux/security.h>
 #include <linux/syscalls.h>
 
+/* eCS */
 #include <linux/paravirt.h>
+/*******/
 
 #include <asm/switch_to.h>
 #include <asm/tlb.h>
@@ -41,8 +44,6 @@
 
 #define CREATE_TRACE_POINTS
 #include <trace/events/sched.h>
-
-
 
 DEFINE_PER_CPU_SHARED_ALIGNED(struct rq, runqueues);
 
@@ -192,7 +193,7 @@ static void update_rq_clock_task(struct rq *rq, s64 delta)
 	rq->prev_irq_time += irq_delta;
 	delta -= irq_delta;
 #endif
-#if 0
+#if 0 /* eCS */
 #ifdef CONFIG_PARAVIRT_TIME_ACCOUNTING
 	if (static_key_false((&paravirt_steal_rq_enabled))) {
 		steal = paravirt_steal_clock(cpu_of(rq));
@@ -2537,6 +2538,7 @@ __fire_sched_out_preempt_notifiers(struct task_struct *curr,
 		notifier->ops->sched_out(notifier, next);
 }
 
+/* eCS */
 static int
 __fire_sched_check_preempt_notifiers(struct task_struct *curr)
 {
@@ -2547,6 +2549,7 @@ __fire_sched_check_preempt_notifiers(struct task_struct *curr)
 
         return 0;
 }
+/*******/
 
 static __always_inline void
 fire_sched_out_preempt_notifiers(struct task_struct *curr,
@@ -2556,6 +2559,7 @@ fire_sched_out_preempt_notifiers(struct task_struct *curr,
 		__fire_sched_out_preempt_notifiers(curr, next);
 }
 
+/* eCS */
 static __always_inline int
 fire_sched_check_preempt_notifiers(struct task_struct *curr)
 {
@@ -2571,6 +2575,7 @@ preempt_notifier_sched_check(struct task_struct *curr)
         return fire_sched_check_preempt_notifiers(curr);
 }
 EXPORT_SYMBOL_GPL(preempt_notifier_sched_check);
+/*******/
 
 #else /* !CONFIG_PREEMPT_NOTIFIERS */
 
@@ -2584,6 +2589,7 @@ fire_sched_out_preempt_notifiers(struct task_struct *curr,
 {
 }
 
+/* eCS */
 static inline int
 fire_sched_check_preempt_notifiers(struct task_struct *curr)
 {
@@ -2596,6 +2602,7 @@ preempt_notifier_sched_check(struct task_struct *curr)
         return 0;
 }
 EXPORT_SYMBOL_GPL(preempt_notifier_sched_check);
+/*******/
 
 #endif /* CONFIG_PREEMPT_NOTIFIERS */
 
@@ -2855,11 +2862,13 @@ bool single_task_running(void)
 }
 EXPORT_SYMBOL(single_task_running);
 
+/* eCS */
 int nr_running_tasks(void)
 {
         return raw_rq()->nr_running;
 }
 EXPORT_PER_CPU_SYMBOL(nr_running_tasks);
+/*******/
 
 unsigned long long nr_context_switches(void)
 {
@@ -3381,9 +3390,11 @@ static void __sched notrace __schedule(bool preempt)
 		trace_sched_switch(preempt, prev, next);
 
 		/* Also unlocks the rq: */
+/* eCS */
                 dec_if_vcs_preempt_count(prev);
 		rq = context_switch(rq, prev, next, &rf);
                 inc_if_vcs_preempt_count(next);
+/*******/
 
 	} else {
 		rq->clock_update_flags &= ~(RQCF_ACT_SKIP|RQCF_REQ_SKIP);
@@ -5491,7 +5502,7 @@ static void migrate_tasks(struct rq *dead_rq, struct rq_flags *rf)
 		/*
 		 * pick_next_task() assumes pinned rq->lock:
 		 */
-                next = pick_next_task(rq, &fake_task, rf);
+		next = pick_next_task(rq, &fake_task, rf);
 		BUG_ON(!next);
 		next->sched_class->put_prev_task(rq, next);
 

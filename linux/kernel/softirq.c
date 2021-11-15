@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-only
 /*
  *	linux/kernel/softirq.c
  *
@@ -27,9 +28,11 @@
 #include <linux/tick.h>
 #include <linux/irq.h>
 
+/* eCS */
 #ifdef CONFIG_PARAVIRT_VCS
 #include <asm/paravirt.h>
 #endif
+/*******/
 
 #define CREATE_TRACE_POINTS
 #include <trace/events/irq.h>
@@ -252,9 +255,11 @@ asmlinkage __visible void __softirq_entry __do_softirq(void)
 	__u32 pending;
 	int softirq_bit;
 
+/* eCS */
 #ifdef CONFIG_PARAVIRT_INTR_CTX_VCS
         pv_vcpu_preempt_count(smp_processor_id(), 1, KVM_INTR_CNTXT);
 #endif
+/*******/
 	/*
 	 * Mask out PF_MEMALLOC s current task context is borrowed for the
 	 * softirq. A softirq handled such as network RX might set PF_MEMALLOC
@@ -316,9 +321,11 @@ restart:
 	account_irq_exit_time(current);
 	__local_bh_enable(SOFTIRQ_OFFSET);
 	WARN_ON_ONCE(in_interrupt());
+/* eCS */
 #ifdef CONFIG_PARAVIRT_INTR_CTX_VCS
         pv_vcpu_preempt_count(smp_processor_id(), -1, KVM_INTR_CNTXT);
 #endif
+/*******/
 	current_restore_flags(old_flags, PF_MEMALLOC);
 }
 
@@ -327,9 +334,11 @@ asmlinkage __visible void do_softirq(void)
 	__u32 pending;
 	unsigned long flags;
 
+/* eCS */
 #ifdef CONFIG_PARAVIRT_INTR_CTX_VCS
         pv_vcpu_preempt_count(smp_processor_id(), 1, KVM_INTR_CNTXT);
 #endif
+/*******/
 	if (in_interrupt())
 		return;
 
@@ -342,9 +351,11 @@ asmlinkage __visible void do_softirq(void)
 
 	local_irq_restore(flags);
 
+/* eCS */
 #ifdef CONFIG_PARAVIRT_INTR_CTX_VCS
         pv_vcpu_preempt_count(smp_processor_id(), -1, KVM_INTR_CNTXT);
 #endif
+/*******/
 }
 
 /*
@@ -352,9 +363,11 @@ asmlinkage __visible void do_softirq(void)
  */
 void irq_enter(void)
 {
+/* eCS */
 #ifdef CONFIG_PARAVIRT_INTR_CTX_VCS
         pv_vcpu_preempt_count(smp_processor_id(), 1, KVM_INTR_CNTXT);
 #endif
+/*******/
 	rcu_irq_enter();
 	if (is_idle_task(current) && !in_interrupt()) {
 		/*
@@ -427,9 +440,11 @@ void irq_exit(void)
 	tick_irq_exit();
 	rcu_irq_exit();
 	trace_hardirq_exit(); /* must be last! */
+/* eCS */
 #ifdef CONFIG_PARAVIRT_INTR_CTX_VCS
         pv_vcpu_preempt_count(smp_processor_id(), -1, KVM_INTR_CNTXT);
 #endif
+/*******/
 }
 
 /*

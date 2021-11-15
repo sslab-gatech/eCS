@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: GPL-2.0-only */
 #ifndef _UAPI__LINUX_KVM_PARA_H
 #define _UAPI__LINUX_KVM_PARA_H
 
@@ -26,6 +27,7 @@
 #define KVM_HC_MIPS_CONSOLE_OUTPUT	8
 #define KVM_HC_CLOCK_PAIRING		9
 
+/* eCS */
 #ifdef CONFIG_PARAVIRT_IPI
 #define KVM_HC_IPI_DELIVERY             10
 
@@ -40,6 +42,7 @@ DECLARE_PER_CPU(struct kvm_ipi_cpu_list, ipi_cpu_list);
 #ifdef CONFIG_PARAVIRT_WAIT_HYPERCALL
 #define KVM_HC_WAIT                     12
 #endif
+/*******/
 
 /*
  * hypercalls use architecture specific

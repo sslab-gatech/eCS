@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 /*  Paravirtualization interfaces
     Copyright (C) 2006 Rusty Russell IBM Corporation
 
@@ -125,15 +126,19 @@ static void *get_call_destination(u8 type)
 		.pv_cpu_ops = pv_cpu_ops,
 		.pv_irq_ops = pv_irq_ops,
 		.pv_mmu_ops = pv_mmu_ops,
+/* eCS */
 #ifdef CONFIG_PARAVIRT_VCS
                 .pv_sched_ops = pv_sched_ops,
 #endif
+/*******/
 #ifdef CONFIG_PARAVIRT_SPINLOCKS
 		.pv_lock_ops = pv_lock_ops,
 #endif
+/* eCS */
 #ifdef CONFIG_PARAVIRT_IPI
                 .pv_ipi_ops = pv_ipi_ops,
 #endif
+/*******/
 	};
 	return *((void **)&tmpl + type);
 }
@@ -472,7 +477,7 @@ struct pv_mmu_ops pv_mmu_ops __ro_after_init = {
 	.set_fixmap = native_set_fixmap,
 };
 
-
+/* eCS */
 #ifdef CONFIG_PARAVIRT_VCS
 __visible int __native_vcpu_get_fake_preempt_count(long cpu)
 {
@@ -551,15 +556,18 @@ struct pv_ipi_ops pv_ipi_ops __ro_after_init = {
         .update_cpumask = paravirt_nop,
 };
 #endif
+/*******/
 
 EXPORT_SYMBOL_GPL(pv_time_ops);
 EXPORT_SYMBOL    (pv_cpu_ops);
 EXPORT_SYMBOL    (pv_mmu_ops);
 EXPORT_SYMBOL_GPL(pv_info);
 EXPORT_SYMBOL    (pv_irq_ops);
+/* eCS */
 #ifdef CONFIG_PARAVIRT_VCS
 EXPORT_SYMBOL_GPL(pv_sched_ops);
 #endif
 #ifdef CONFIG_PARAVIRT_IPI
 EXPORT_SYMBOL_GPL(pv_ipi_ops);
 #endif
+/*******/

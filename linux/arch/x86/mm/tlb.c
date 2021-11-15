@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-only
 #include <linux/init.h>
 
 #include <linux/mm.h>
@@ -14,9 +15,11 @@
 #include <asm/uv/uv.h>
 #include <linux/debugfs.h>
 
+/* eCS */
 #ifdef CONFIG_PARAVIRT_TLB
 #include <linux/kvm_para.h>
 #endif
+/*******/
 
 /*
  *	TLB flushing, formerly SMP-only
@@ -231,6 +234,7 @@ void native_flush_tlb_others(const struct cpumask *cpumask,
 			       (void *)info, 1);
 }
 
+/* eCS */
 #ifdef CONFIG_PARAVIRT_TLB
 
 void paravirt_flush_tlb_others(const struct cpumask *cpumask,
@@ -246,6 +250,7 @@ void paravirt_flush_tlb_others(const struct cpumask *cpumask,
 }
 
 #endif
+/*******/
 
 /*
  * See Documentation/x86/tlb.txt for details.  We choose 33

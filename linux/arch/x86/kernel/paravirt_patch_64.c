@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 #include <asm/paravirt.h>
 #include <asm/asm-offsets.h>
 #include <linux/stringify.h>
@@ -23,6 +24,7 @@ DEF_NATIVE(pv_lock_ops, queued_spin_unlock, "movb $0, (%rdi)");
 DEF_NATIVE(pv_lock_ops, vcpu_is_preempted, "xor %rax, %rax");
 #endif
 
+/* eCS */
 #if defined(CONFIG_PARAVIRT_VCS)
 DEF_NATIVE(pv_sched_ops, vcpu_is_preempted, "xor %rax, %rax");
 DEF_NATIVE(pv_sched_ops, vcpu_get_fake_preempt_count, "xor %rax, %rax");
@@ -30,6 +32,7 @@ DEF_NATIVE(pv_sched_ops, pcpu_is_overloaded, "xor %eax, %eax");
 DEF_NATIVE(pv_sched_ops, vcpu_preempt_count, "");
 DEF_NATIVE(pv_sched_ops, vcpu_fake_preempt_count, "");
 #endif
+/*******/
 
 unsigned paravirt_patch_ident_32(void *insnbuf, unsigned len)
 {
@@ -45,11 +48,13 @@ unsigned paravirt_patch_ident_64(void *insnbuf, unsigned len)
 
 extern bool pv_is_native_spin_unlock(void);
 extern bool pv_is_native_vcpu_is_preempted(void);
+/* eCS */
 extern bool pv_is_native_pcpu_is_overloaded(void);
 extern bool pv_is_native_vcpu_is_preempted_other(void);
 extern bool pv_is_native_vcpu_get_fake_preempt_count(void);
 extern bool pv_is_native_vcpu_preempt_count(void);
 extern bool pv_is_native_vcpu_fake_preempt_count(void);
+/*******/
 
 unsigned native_patch(u8 type, u16 clobbers, void *ibuf,
 		      unsigned long addr, unsigned len)
@@ -87,6 +92,7 @@ unsigned native_patch(u8 type, u16 clobbers, void *ibuf,
 			if (pv_is_native_vcpu_is_preempted()) {
 				start = start_pv_lock_ops_vcpu_is_preempted;
 				end   = end_pv_lock_ops_vcpu_is_preempted;
+/* eCS */
 				goto patch_default;
 			}
 			goto patch_default;
@@ -104,10 +110,12 @@ unsigned native_patch(u8 type, u16 clobbers, void *ibuf,
 			if (pv_is_native_pcpu_is_overloaded()) {
 				start = start_pv_sched_ops_pcpu_is_overloaded;
 				end   = end_pv_sched_ops_pcpu_is_overloaded;
+/*******/
 				goto patch_site;
 			}
 			goto patch_default;
 
+/* eCS */
 		case PARAVIRT_PATCH(pv_sched_ops.vcpu_get_fake_preempt_count):
 			if (pv_is_native_vcpu_get_fake_preempt_count()) {
 				start = start_pv_sched_ops_vcpu_get_fake_preempt_count;
@@ -131,6 +139,7 @@ unsigned native_patch(u8 type, u16 clobbers, void *ibuf,
                                 goto patch_default;
                         }
                         goto patch_default;
+/*******/
 #endif
 
 	default:

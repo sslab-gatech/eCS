@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-only
 /*
  * Completely Fair Scheduling (CFS) Class (SCHED_NORMAL/SCHED_BATCH)
  *
@@ -3818,6 +3819,7 @@ dequeue_entity(struct cfs_rq *cfs_rq, struct sched_entity *se, int flags)
 /*
  * Preempt the current task with a newly woken task if needed:
  */
+/* eCS */
 static void
 check_preempt_tick(struct cfs_rq *cfs_rq, struct sched_entity *curr,
                    struct task_struct *curr_task)
@@ -3858,6 +3860,7 @@ check_preempt_tick(struct cfs_rq *cfs_rq, struct sched_entity *curr,
 	if (delta > ideal_runtime && !flag)
 		resched_curr(rq_of(cfs_rq));
 }
+/*******/
 
 static void
 set_next_entity(struct cfs_rq *cfs_rq, struct sched_entity *se)
@@ -3978,6 +3981,7 @@ static void put_prev_entity(struct cfs_rq *cfs_rq, struct sched_entity *prev)
 	cfs_rq->curr = NULL;
 }
 
+/* eCS */
 static void
 entity_tick(struct cfs_rq *cfs_rq, struct sched_entity *curr,
             struct task_struct *curr_task, int queued)
@@ -4013,6 +4017,7 @@ entity_tick(struct cfs_rq *cfs_rq, struct sched_entity *curr,
 	if (cfs_rq->nr_running > 1)
 		check_preempt_tick(cfs_rq, curr, curr_task);
 }
+/*******/
 
 
 /**************************************************
@@ -8959,7 +8964,9 @@ static void task_tick_fair(struct rq *rq, struct task_struct *curr, int queued)
 
 	for_each_sched_entity(se) {
 		cfs_rq = cfs_rq_of(se);
+/* eCS */
 		entity_tick(cfs_rq, se, curr, queued);
+/*******/
 	}
 
 	if (static_branch_unlikely(&sched_numa_balancing))

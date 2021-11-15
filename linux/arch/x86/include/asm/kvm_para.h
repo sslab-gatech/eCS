@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: GPL-2.0-only */
 #ifndef _ASM_X86_KVM_PARA_H
 #define _ASM_X86_KVM_PARA_H
 
@@ -101,6 +102,7 @@ static inline void kvm_spinlock_init(void)
 }
 #endif /* CONFIG_PARAVIRT_SPINLOCKS */
 
+/* eCS */
 #ifdef CONFIG_PARAVIRT_VCS
 void __init kvm_sched_init(void);
 #else
@@ -121,6 +123,7 @@ static inline void kvm_disable_ipi(void)
         return;
 }
 #endif
+/*******/
 
 #else /* CONFIG_KVM_GUEST */
 #define kvm_guest_init() do {} while (0)

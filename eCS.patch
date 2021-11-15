@@ -1,0 +1,3540 @@
+diff --git a/arch/x86/Kconfig b/arch/x86/Kconfig
+index 323cb06..be83b9b 100644
+--- a/arch/x86/Kconfig
++++ b/arch/x86/Kconfig
+@@ -747,6 +747,15 @@ config PARAVIRT_SPINLOCKS
+ 
+ 	  If you are unsure how to answer this question, answer Y.
+ 
++# eCS
++config PARAVIRT_WAIT_HYPERCALL
++	bool "wait hypercall"
++	depends on PARAVIRT_SPINLOCKS
++        default n
++	---help---
++          Paravirtualized wait hypercall.
++###
++
+ config QUEUED_LOCK_STAT
+ 	bool "Paravirt queued spinlock statistics"
+ 	depends on PARAVIRT_SPINLOCKS && DEBUG_FS
+@@ -755,6 +764,16 @@ config QUEUED_LOCK_STAT
+ 	  behavior of paravirtualized queued spinlocks and report
+ 	  them on debugfs.
+ 
++# eCS
++config QUEUED_NUMA_LOCK_STEAL
++        bool "NUMA aware lock stealing"
++        depends on ARCH_USE_QUEUED_SPINLOCKS && PARAVIRT_SPINLOCKS
++        default n
++        ---help---
++          Only allow the steals from the same NUMA domain to steal the lock
++          to mitigate the cacheline bouncing.
++###
++
+ source "arch/x86/xen/Kconfig"
+ 
+ config KVM_GUEST
+@@ -780,6 +799,86 @@ config KVM_DEBUG_FS
+ 
+ source "arch/x86/lguest/Kconfig"
+ 
++# eCS
++config PARAVIRT_ONLY_VCS
++        bool "Only expose virtualized critical sections, disable other pvops"
++        depends on PARAVIRT
++        select PARAVIRT_VCS
++        default n
++        ---help---
++          This option enables sharing the information about the critical sections
++          that are defined by the guest OS to be effectively scheduled as the hypervisor
++          will provide an extra schedule and will later penalize the guest OS. This can
++          be beneficial if the guest OS properly defines those VCS.
++
++config PARAVIRT_VCS
++        bool "Expose virtualized critical sections"
++        depends on PARAVIRT
++        select PARAVIRT_TIME_ACCOUNTING
++        default n
++        ---help---
++          This option enables sharing the information about the critical sections
++          that are defined by the guest OS to be effectively scheduled as the hypervisor
++          will provide an extra schedule and will later penalize the guest OS. This can
++          be beneficial if the guest OS properly defines those VCS.
++
++config PARAVIRT_RCU_VCS
++        bool "Expose RCU operation"
++        depends on PARAVIRT_VCS
++        default y
++        ---help---
++          Expose only RCU readers to the hypervisor
++
++config PARAVIRT_SPINLOCK_VCS
++        bool "Expose spinlock operation"
++        depends on PARAVIRT_VCS
++        default y
++        ---help---
++          Expose spinlock operations to the hypervisor
++
++config PARAVIRT_RWLOCK_WR_VCS
++        bool "Expose RWLOCK writers"
++        depends on PARAVIRT_VCS
++        default y
++        ---help---
++          Expose rwlock writers to the hypervisor
++
++config PARAVIRT_RWLOCK_RD_VCS
++        bool "Expose RWLOCK readers"
++        depends on PARAVIRT_VCS
++        default y
++        ---help---
++          Expose rwlock readers to the hypervisor
++
++config PARAVIRT_MUTEX_VCS
++        bool "Expose mutex operation"
++        depends on PARAVIRT_VCS
++        default y
++        ---help---
++          Expose mutex to the hypervisor
++
++config PARAVIRT_RWSEM_WR_VCS
++        bool "Expose RWSEM writers"
++        depends on PARAVIRT_VCS
++        default y
++        ---help---
++          Expose rwsem writers to the hypervisor
++
++config PARAVIRT_RWSEM_RD_VCS
++        bool "Expose readers of rwsem"
++        depends on PARAVIRT_VCS
++        default y
++        ---help---
++          Only expose readers of the rwsem primitive
++
++config PARAVIRT_INTR_CTX_VCS
++        bool "Expose interrupt context"
++        depends on PARAVIRT_VCS
++        default y
++        ---help---
++          Expose the interrupt context to the hypervisor
++###
++
+ config PARAVIRT_TIME_ACCOUNTING
+ 	bool "Paravirtual steal time accounting"
+ 	depends on PARAVIRT
+@@ -792,6 +891,25 @@ config PARAVIRT_TIME_ACCOUNTING
+ 
+ 	  If in doubt, say N here.
+ 
++#eCS
++config PARAVIRT_IPI
++        bool "Enable paravirtual interface for IPI"
++        depends on PARAVIRT
++        default n
++        ---help---
++          This option enables paravirtual interface for the IPI via the hypercall.
++          This is beneficial for the multicast IPI as it amortizes the multicast IPI
++          to a single multicast IPI. Moreover, it also enables asynchronous approach
++          to waiting for the ack if the VM has been preempted.
++
++config PARAVIRT_TLB
++        bool "Enable paravirtual interface for TLB shootdown"
++        depends on PARAVIRT_IPI
++        default n
++        ---help---
++          This option uses a single hypercall and issues invvpid on the hypervisor side.
++###
++
+ config PARAVIRT_CLOCK
+ 	bool
+ 
+diff --git a/arch/x86/boot/compressed/misc.h b/arch/x86/boot/compressed/misc.h
+index 766a521..89e084f 100644
+--- a/arch/x86/boot/compressed/misc.h
++++ b/arch/x86/boot/compressed/misc.h
+@@ -1,3 +1,4 @@
++/* SPDX-License-Identifier: GPL-2.0-or-later */
+ #ifndef BOOT_COMPRESSED_MISC_H
+ #define BOOT_COMPRESSED_MISC_H
+ 
+@@ -9,6 +10,13 @@
+  */
+ #undef CONFIG_PARAVIRT
+ #undef CONFIG_PARAVIRT_SPINLOCKS
++/* eCS */
++#undef CONFIG_PARAVIRT_VCS
++#undef CONFIG_PARAVIRT_RCU_VCS
++#undef CONFIG_PARAVIRT_SPINLOCK_VCS
++#undef CONFIG_PARAVIRT_RWLOCK_WR_VCS
++#undef CONFIG_PARAVIRT_RWLOCK_RD_VCS
++/*******/
+ #undef CONFIG_KASAN
+ 
+ #include <linux/linkage.h>
+diff --git a/arch/x86/include/asm/kvm_host.h b/arch/x86/include/asm/kvm_host.h
+index 92c9032..06ed475 100644
+--- a/arch/x86/include/asm/kvm_host.h
++++ b/arch/x86/include/asm/kvm_host.h
+@@ -1,3 +1,4 @@
++/* SPDX-License-Identifier: GPL-2.0-only */
+ /*
+  * Kernel-based Virtual Machine driver for Linux
+  *
+@@ -35,8 +36,10 @@
+ #include <asm/asm.h>
+ #include <asm/kvm_page_track.h>
+ 
+-#define KVM_MAX_VCPUS 288
+-#define KVM_SOFT_MAX_VCPUS 240
++/* eCS */
++#define KVM_MAX_VCPUS 512
++#define KVM_SOFT_MAX_VCPUS 384
++/*******/
+ #define KVM_MAX_VCPU_ID 1023
+ #define KVM_USER_MEM_SLOTS 509
+ /* memory slots that are not exposed to userspace */
+@@ -590,6 +593,15 @@ struct kvm_vcpu_arch {
+ 		struct kvm_steal_time steal;
+ 	} st;
+ 
++/* eCS */
++#ifdef CONFIG_PARAVIRT_IPI
++        struct {
++                struct gfn_to_hva_cache cpus;
++                struct kvm_ipi_cpu_list cpu_list;
++        } ipi_cpu_list;
++#endif
++/*******/
++
+ 	u64 tsc_offset;
+ 	u64 last_guest_tsc;
+ 	u64 last_host_tsc;
+@@ -874,6 +886,11 @@ struct kvm_vcpu_stat {
+ 	u64 irq_injections;
+ 	u64 nmi_injections;
+ 	u64 req_event;
++/* eCS */
++        u64 fake_vcs;
++        u64 vcs;
++        u64 avoided_preempts;
++/*******/
+ };
+ 
+ struct x86_instruction_info;
+@@ -950,6 +967,11 @@ struct kvm_x86_ops {
+ 	u32 (*get_pkru)(struct kvm_vcpu *vcpu);
+ 
+ 	void (*tlb_flush)(struct kvm_vcpu *vcpu);
++/* eCS */
++        void (*tlb_flush_addr)(struct kvm_vcpu *vcpu, unsigned long addr);
++
++        void (*get_vpid)(struct kvm_vcpu *vcpu);
++/*******/
+ 
+ 	void (*run)(struct kvm_vcpu *vcpu);
+ 	int (*handle_exit)(struct kvm_vcpu *vcpu);
+diff --git a/arch/x86/include/asm/kvm_para.h b/arch/x86/include/asm/kvm_para.h
+index bc62e7c..1ecc34c 100644
+--- a/arch/x86/include/asm/kvm_para.h
++++ b/arch/x86/include/asm/kvm_para.h
+@@ -1,3 +1,4 @@
++/* SPDX-License-Identifier: GPL-2.0-only */
+ #ifndef _ASM_X86_KVM_PARA_H
+ #define _ASM_X86_KVM_PARA_H
+ 
+@@ -101,6 +102,29 @@ static inline void kvm_spinlock_init(void)
+ }
+ #endif /* CONFIG_PARAVIRT_SPINLOCKS */
+ 
++/* eCS */
++#ifdef CONFIG_PARAVIRT_VCS
++void __init kvm_sched_init(void);
++#else
++static inline void __init kvm_sched_init(void)
++{
++}
++#endif /* CONFIG_PARAVIRT_VCS */
++
++#ifdef CONFIG_PARAVIRT_IPI
++void kvm_ipi_init(void);
++void kvm_disable_ipi(void);
++#else
++static inline void kvm_ipi_init(void)
++{
++}
++static inline void kvm_disable_ipi(void)
++{
++        return;
++}
++#endif
++/*******/
++
+ #else /* CONFIG_KVM_GUEST */
+ #define kvm_guest_init() do {} while (0)
+ #define kvm_async_pf_task_wait(T) do {} while(0)
+diff --git a/arch/x86/include/asm/paravirt.h b/arch/x86/include/asm/paravirt.h
+index 9ccac19..9009c7e 100644
+--- a/arch/x86/include/asm/paravirt.h
++++ b/arch/x86/include/asm/paravirt.h
+@@ -1,3 +1,4 @@
++/* SPDX-License-Identifier: GPL-2.0-only */
+ #ifndef _ASM_X86_PARAVIRT_H
+ #define _ASM_X86_PARAVIRT_H
+ /* Various instructions on x86 need to be replaced for
+@@ -15,6 +16,21 @@
+ #include <linux/cpumask.h>
+ #include <asm/frame.h>
+ 
++/* eCS */
++#define KVM_NO_CS               (0)
++#define KVM_RCU_READER          (1 << 1)
++#define KVM_RCU_WRITER          (1 << 2)
++#define KVM_RWL_READER          (1 << 3)
++#define KVM_SPN_HOLDER          (1 << 5)
++#define KVM_SPN_WAITER          (1 << 6)
++#define KVM_RWL_WRITER          (1 << 7)
++#define KVM_INTR_CNTXT          (1 << 8)
++
++#define KVM_MUTEX_HOLDER        (1 << 1)
++#define KVM_RWSEM_WRITER        (1 << 2)
++#define KVM_RWSEM_READER        (1 << 3)
++/*******/
++
+ static inline void load_sp0(struct tss_struct *tss,
+ 			     struct thread_struct *thread)
+ {
+@@ -727,6 +743,143 @@ static __always_inline bool pv_vcpu_is_preempted(long cpu)
+ 
+ #endif /* SMP && PARAVIRT_SPINLOCKS */
+ 
++/* eCS */
++#if defined(CONFIG_PARAVIRT_VCS)
++
++static __always_inline bool pv_vcpu_is_preempted_other(long cpu)
++{
++	return PVOP_CALLEE1(bool, pv_sched_ops.vcpu_is_preempted, cpu);
++}
++
++static __always_inline bool pv_pcpu_is_overloaded(long cpu)
++{
++    return PVOP_CALLEE1(bool, pv_sched_ops.pcpu_is_overloaded, cpu);
++}
++
++static __always_inline int pv_vcpu_get_fake_preempt_count(long cpu)
++{
++	return PVOP_CALLEE1(__u32, pv_sched_ops.vcpu_get_fake_preempt_count,
++                            cpu);
++}
++
++static __always_inline void pv_vcpu_preempt_count(long cpu, int update,
++                                                  uint16_t type)
++{
++        PVOP_VCALL3(pv_sched_ops.vcpu_preempt_count, cpu, update, type);
++}
++
++static __always_inline void pv_vcpu_fake_preempt_count(long cpu, int update,
++                                                       uint8_t type)
++{
++        PVOP_VCALL3(pv_sched_ops.vcpu_fake_preempt_count, cpu, update, type);
++}
++
++static __always_inline void pv_vcpu_inc_fake_preempt_count(long cpu, uint8_t type)
++{
++        pv_vcpu_fake_preempt_count(cpu, 1, type);
++}
++
++static __always_inline void pv_vcpu_dec_fake_preempt_count(long cpu, uint8_t type)
++{
++        pv_vcpu_fake_preempt_count(cpu, -1, type);
++}
++
++#define vcpu_get_fake_preempt_count vcpu_get_fake_preempt_count
++static inline int vcpu_get_fake_preempt_count(long cpu)
++{
++        return pv_vcpu_get_fake_preempt_count(cpu);
++}
++
++#define vcpu_is_preempted_other vcpu_is_preempted_other
++static inline bool vcpu_is_preempted_other(long cpu)
++{
++	return pv_vcpu_is_preempted_other(cpu);
++}
++
++#define vcpu_pcpu_is_overloaded vcpu_pcpu_is_overloaded
++static inline bool vcpu_pcpu_is_overloaded(long cpu)
++{
++    return pv_pcpu_is_overloaded(cpu);
++}
++
++#define vcpu_preempt_count vcpu_preempt_count
++static inline void vcpu_preempt_count(long cpu, int update, uint16_t type)
++{
++        pv_vcpu_preempt_count(cpu, update, type);
++}
++
++#define vcpu_inc_fake_preempt_count vcpu_inc_fake_preempt_count
++static inline void vcpu_inc_fake_preempt_count(long cpu, uint8_t type)
++{
++        pv_vcpu_inc_fake_preempt_count(cpu, type);
++}
++
++#define vcpu_dec_fake_preempt_count vcpu_dec_fake_preempt_count
++static inline void vcpu_dec_fake_preempt_count(long cpu, uint8_t type)
++{
++        pv_vcpu_dec_fake_preempt_count(cpu, type);
++}
++
++#define vcpu_update_fake_preempt_count vcpu_update_fake_preempt_count
++static inline void vcpu_update_fake_preempt_count(long cpu, int update,
++                                                  uint16_t type)
++{
++        pv_vcpu_fake_preempt_count(cpu, update, type);
++}
++
++#endif /* CONFIG_PARAVIRT_VCS */
++
++#ifdef CONFIG_PARAVIRT_IPI
++
++#define KVM_VCPU_IPI_CPULIST_REG        1
++#define KVM_VCPU_IPI_CPULIST_DEREG      2
++#define KVM_VCPU_IPI_ISSUE              3
++#define KVM_VCPU_APICID_REG             4
++
++static __always_inline void pv_vcpu_handle_ipi(int op, u64 val1, u64 val2)
++{
++        PVOP_VCALL3(pv_ipi_ops.handle_ipi, op, val1, val2);
++}
++
++#define vcpu_setup_ipi vcpu_setup_ipi
++static inline void vcpu_setup_ipi(u64 paddr)
++{
++        pv_vcpu_handle_ipi(KVM_VCPU_IPI_CPULIST_REG, paddr, 0);
++}
++
++#define vcpu_deinit_ipi vcpu_deinit_ipi
++static inline void vcpu_deinit_ipi(void)
++{
++        pv_vcpu_handle_ipi(KVM_VCPU_IPI_CPULIST_DEREG, 0, 0);
++}
++
++#define vcpu_update_apicid vcpu_update_apicid
++static inline void vcpu_update_apicid(u64 vcpu_id, u64 apicid)
++{
++        pv_vcpu_handle_ipi(KVM_VCPU_APICID_REG, vcpu_id, apicid);
++}
++
++#define vcpu_issue_ipi vcpu_issue_ipi
++static inline void vcpu_issue_ipi(u32 msr, u64 data)
++{
++        pv_vcpu_handle_ipi(KVM_VCPU_IPI_ISSUE, msr, data);
++}
++
++#define send_call_function_ipi_mask send_call_function_ipi_mask
++static inline void send_call_function_ipi_mask(const struct cpumask *mask)
++{
++        PVOP_VCALL1(pv_ipi_ops.issue_ipi, mask);
++}
++
++#define update_ipi_cpumask update_ipi_cpumask
++static inline void update_ipi_cpumask(struct cpumask *mask)
++{
++        PVOP_VCALL1(pv_ipi_ops.update_cpumask, mask);
++}
++
++#endif /* CONFIG_PARAVIRT_IPI */
++/*******/
++
+ #ifdef CONFIG_X86_32
+ #define PV_SAVE_REGS "pushl %ecx; pushl %edx;"
+ #define PV_RESTORE_REGS "popl %edx; popl %ecx;"
+diff --git a/arch/x86/include/asm/paravirt_types.h b/arch/x86/include/asm/paravirt_types.h
+index 9ffc36b..c601d2c 100644
+--- a/arch/x86/include/asm/paravirt_types.h
++++ b/arch/x86/include/asm/paravirt_types.h
+@@ -1,3 +1,4 @@
++/* SPDX-Licence-Identifier: GPL-2.0-only */
+ #ifndef _ASM_X86_PARAVIRT_TYPES_H
+ #define _ASM_X86_PARAVIRT_TYPES_H
+ 
+@@ -307,6 +308,26 @@ struct pv_mmu_ops {
+ 			   phys_addr_t phys, pgprot_t flags);
+ } __no_randomize_layout;
+ 
++/* eCS */
++#ifdef CONFIG_PARAVIRT_VCS
++struct pv_sched_ops {
++	struct paravirt_callee_save vcpu_is_preempted;
++        struct paravirt_callee_save pcpu_is_overloaded;
++        struct paravirt_callee_save vcpu_get_fake_preempt_count;
++        struct paravirt_callee_save vcpu_preempt_count;
++        struct paravirt_callee_save vcpu_fake_preempt_count;
++} __no_randomize_layout;
++#endif
++
++#ifdef CONFIG_PARAVIRT_IPI
++struct pv_ipi_ops {
++        void (*handle_ipi)(int op, u64 val1, u64 val2);
++        void (*issue_ipi)(const struct cpumask *mask);
++        void (*update_cpumask)(struct cpumask *mask);
++} __no_randomize_layout;
++#endif
++/*******/
++
+ struct arch_spinlock;
+ #ifdef CONFIG_SMP
+ #include <asm/spinlock_types.h>
+@@ -334,6 +355,14 @@ struct paravirt_patch_template {
+ 	struct pv_irq_ops pv_irq_ops;
+ 	struct pv_mmu_ops pv_mmu_ops;
+ 	struct pv_lock_ops pv_lock_ops;
++/* eCS */
++#ifdef CONFIG_PARAVIRT_VCS
++        struct pv_sched_ops pv_sched_ops;
++#endif
++#ifdef CONFIG_PARAVIRT_IPI
++        struct pv_ipi_ops pv_ipi_ops;
++#endif
++/*******/
+ } __no_randomize_layout;
+ 
+ extern struct pv_info pv_info;
+@@ -343,6 +372,14 @@ struct paravirt_patch_template {
+ extern struct pv_irq_ops pv_irq_ops;
+ extern struct pv_mmu_ops pv_mmu_ops;
+ extern struct pv_lock_ops pv_lock_ops;
++/* eCS */
++#ifdef CONFIG_PARAVIRT_VCS
++extern struct pv_sched_ops pv_sched_ops;
++#endif
++#ifdef CONFIG_PARAVIRT_IPI
++extern struct pv_ipi_ops pv_ipi_ops;
++#endif
++/*******/
+ 
+ #define PARAVIRT_PATCH(x)					\
+ 	(offsetof(struct paravirt_patch_template, x) / sizeof(void *))
+diff --git a/arch/x86/include/asm/qspinlock.h b/arch/x86/include/asm/qspinlock.h
+index 48a706f..57cd785 100644
+--- a/arch/x86/include/asm/qspinlock.h
++++ b/arch/x86/include/asm/qspinlock.h
+@@ -1,3 +1,4 @@
++/* SPDX-License-Identifier: GPL-2.0-only */
+ #ifndef _ASM_X86_QSPINLOCK_H
+ #define _ASM_X86_QSPINLOCK_H
+ 
+@@ -17,6 +18,12 @@ static inline void native_queued_spin_unlock(struct qspinlock *lock)
+ 	smp_store_release((u8 *)lock, 0);
+ }
+ 
++/* eCS */
++#if defined(CONFIG_PARAVIRT_SPINLOCKS) || defined(CONFIG_PARAVIRT_VCS)
++DECLARE_PER_CPU_READ_MOSTLY(int, cpu_number);
++#endif
++/*******/
++
+ #ifdef CONFIG_PARAVIRT_SPINLOCKS
+ extern void native_queued_spin_lock_slowpath(struct qspinlock *lock, u32 val);
+ extern void __pv_init_lock_hash(void);
+@@ -26,11 +33,21 @@ static inline void native_queued_spin_unlock(struct qspinlock *lock)
+ static inline void queued_spin_lock_slowpath(struct qspinlock *lock, u32 val)
+ {
+ 	pv_queued_spin_lock_slowpath(lock, val);
++/* eCS */
++#ifdef CONFIG_PARAVIRT_SPINLOCK_VCS
++        vcpu_preempt_count(this_cpu_read(cpu_number), 1, KVM_SPN_HOLDER);
++#endif
++/*******/
+ }
+ 
+ static inline void queued_spin_unlock(struct qspinlock *lock)
+ {
+ 	pv_queued_spin_unlock(lock);
++/* eCS */
++#ifdef CONFIG_PARAVIRT_SPINLOCK_VCS
++        vcpu_preempt_count(this_cpu_read(cpu_number), -1, KVM_NO_CS);
++#endif
++/*******/
+ }
+ 
+ #define vcpu_is_preempted vcpu_is_preempted
+@@ -38,10 +55,16 @@ static inline bool vcpu_is_preempted(long cpu)
+ {
+ 	return pv_vcpu_is_preempted(cpu);
+ }
++
+ #else
+ static inline void queued_spin_unlock(struct qspinlock *lock)
+ {
+ 	native_queued_spin_unlock(lock);
++/* eCS */
++#ifdef CONFIG_PARAVIRT_SPINLOCK_VCS
++        vcpu_preempt_count(this_cpu_read(cpu_number), -1, KVM_NO_CS);
++#endif
++/*******/
+ }
+ #endif
+ 
+diff --git a/arch/x86/include/asm/tlbflush.h b/arch/x86/include/asm/tlbflush.h
+index 50ea348..b4bd5d0 100644
+--- a/arch/x86/include/asm/tlbflush.h
++++ b/arch/x86/include/asm/tlbflush.h
+@@ -1,3 +1,4 @@
++/* SPDX-License-Identifier: GPL-2.0-only */
+ #ifndef _ASM_X86_TLBFLUSH_H
+ #define _ASM_X86_TLBFLUSH_H
+ 
+@@ -256,6 +257,13 @@ static inline void flush_tlb_page(struct vm_area_struct *vma, unsigned long a)
+ void native_flush_tlb_others(const struct cpumask *cpumask,
+ 			     const struct flush_tlb_info *info);
+ 
++/* eCS */
++#ifdef CONFIG_PARAVIRT_TLB
++void paravirt_flush_tlb_others(const struct cpumask *cpumask,
++                               const struct flush_tlb_info *info);
++#endif
++/*******/
++
+ #define TLBSTATE_OK	1
+ #define TLBSTATE_LAZY	2
+ 
+diff --git a/arch/x86/include/uapi/asm/kvm_para.h b/arch/x86/include/uapi/asm/kvm_para.h
+index a965e5b..0cdc4d7 100644
+--- a/arch/x86/include/uapi/asm/kvm_para.h
++++ b/arch/x86/include/uapi/asm/kvm_para.h
+@@ -1,3 +1,4 @@
++/* SPDX-License-Identifier: GPL-2.0-only */
+ #ifndef _UAPI_ASM_X86_KVM_PARA_H
+ #define _UAPI_ASM_X86_KVM_PARA_H
+ 
+@@ -41,14 +42,24 @@
+ #define MSR_KVM_STEAL_TIME  0x4b564d03
+ #define MSR_KVM_PV_EOI_EN      0x4b564d04
+ 
++/* eCS */
+ struct kvm_steal_time {
+-	__u64 steal;
+-	__u32 version;
+-	__u32 flags;
+-	__u8  preempted;
+-	__u8  u8_pad[3];
+-	__u32 pad[11];
++        __u64 steal;
++        __u32 version;
++        __u32 flags;
++        __u32 preempt_count; /* used by lock holders and rcu readers */
++        __u32 fake_preempt_count; /* used by rwsem, mutex lock holders */
++        __u32 user_preempt_count; /* to be used by glibc mutex/rwsem */
++        __u32 ordo_boundary; /* ORDO_BOUNDARY for the applications */
++        __u16 preempt_type;
++        __u16 fake_preempt_type;
++        __u8  preempt_toggle;
++        __u8  preempted;
++        __u8  overloaded;
++        __u8  pad1[1];
++        __u32 pad[6];
+ };
++/*******/
+ 
+ #define KVM_CLOCK_PAIRING_WALLCLOCK 0
+ struct kvm_clock_pairing {
+@@ -109,5 +120,17 @@ struct kvm_vcpu_pv_apf_data {
+ #define KVM_PV_EOI_ENABLED KVM_PV_EOI_MASK
+ #define KVM_PV_EOI_DISABLED 0x0
+ 
++/* eCS */
++struct kvm_ipi_cpu_list {
++        cpumask_t cpus;
++} ____cacheline_aligned_in_smp;
++
++
++struct kvm_tlb_info {
++        struct kvm_vcpu *vcpu;
++        unsigned long flush_start;
++        unsigned long flush_end;
++};
++/*******/
+ 
+ #endif /* _UAPI_ASM_X86_KVM_PARA_H */
+diff --git a/arch/x86/kernel/asm-offsets_64.c b/arch/x86/kernel/asm-offsets_64.c
+index 99332f5..b707a58 100644
+--- a/arch/x86/kernel/asm-offsets_64.c
++++ b/arch/x86/kernel/asm-offsets_64.c
+@@ -1,3 +1,4 @@
++// SPDX-License-Identifier: GPL-2.0-only
+ #ifndef __LINUX_KBUILD_H
+ # error "Please do not build this file directly, build asm-offsets.c instead"
+ #endif
+@@ -13,7 +14,9 @@
+ #include <asm/syscalls_32.h>
+ };
+ 
+-#if defined(CONFIG_KVM_GUEST) && defined(CONFIG_PARAVIRT_SPINLOCKS)
++/* eCS */
++#if defined(CONFIG_KVM_GUEST) && (defined(CONFIG_PARAVIRT_SPINLOCKS) || defined(CONFIG_PARAVIRT_VCS))
++/*******/
+ #include <asm/kvm_para.h>
+ #endif
+ 
+@@ -29,6 +32,13 @@ int main(void)
+ #if defined(CONFIG_KVM_GUEST) && defined(CONFIG_PARAVIRT_SPINLOCKS)
+ 	OFFSET(KVM_STEAL_TIME_preempted, kvm_steal_time, preempted);
+ 	BLANK();
++/* eCS */
++#endif
++
++#if defined(CONFIG_KVM_GUEST) && defined(CONFIG_PARAVIRT_VCS)
++        OFFSET(KVM_STEAL_TIME_preempted, kvm_steal_time, preempted);
++        BLANK();
++/*******/
+ #endif
+ 
+ #define ENTRY(entry) OFFSET(pt_regs_ ## entry, pt_regs, entry)
+diff --git a/arch/x86/kernel/kvm.c b/arch/x86/kernel/kvm.c
+index d04e30e..62e1d78 100644
+--- a/arch/x86/kernel/kvm.c
++++ b/arch/x86/kernel/kvm.c
+@@ -1,3 +1,4 @@
++// SPDX-License-Identifier: GPL-2.0-or-later
+ /*
+  * KVM paravirt_ops implementation
+  *
+@@ -79,6 +80,12 @@ static int parse_no_kvmclock_vsyscall(char *arg)
+ static DEFINE_PER_CPU(struct kvm_steal_time, steal_time) __aligned(64);
+ static int has_steal_clock = 0;
+ 
++/* eCS */
++#ifdef CONFIG_PARAVIRT_IPI
++DEFINE_PER_CPU(struct kvm_ipi_cpu_list, ipi_cpu_list) __aligned(64);
++#endif
++/*******/
++
+ /*
+  * No need for any "IO delay" on KVM
+  */
+@@ -325,7 +332,10 @@ static void kvm_guest_cpu_init(void)
+ {
+ 	if (!kvm_para_available())
+ 		return;
+-
++/* eCS */
++#if defined(CONFIG_PARAVIRT_ONLY_VCS)
++#else
++/*******/
+ 	if (kvm_para_has_feature(KVM_FEATURE_ASYNC_PF) && kvmapf) {
+ 		u64 pa = slow_virt_to_phys(this_cpu_ptr(&apf_reason));
+ 
+@@ -342,7 +352,9 @@ static void kvm_guest_cpu_init(void)
+ 		printk(KERN_INFO"KVM setup async PF for cpu %d\n",
+ 		       smp_processor_id());
+ 	}
+-
++/* eCS */
++#endif
++/*******/
+ 	if (kvm_para_has_feature(KVM_FEATURE_PV_EOI)) {
+ 		unsigned long pa;
+ 		/* Size alignment is implied but just to make it explicit. */
+@@ -352,9 +364,12 @@ static void kvm_guest_cpu_init(void)
+ 			| KVM_MSR_ENABLED;
+ 		wrmsrl(MSR_KVM_PV_EOI_EN, pa);
+ 	}
+-
+ 	if (has_steal_clock)
+ 		kvm_register_steal_time();
++/* eCS */
++
++        kvm_ipi_init();
++/*******/
+ }
+ 
+ static void kvm_pv_disable_apf(void)
+@@ -378,7 +393,15 @@ static void kvm_pv_guest_cpu_reboot(void *unused)
+ 	 */
+ 	if (kvm_para_has_feature(KVM_FEATURE_PV_EOI))
+ 		wrmsrl(MSR_KVM_PV_EOI_EN, 0);
++/* eCS */
++
++#if defined(CONFIG_PARAVIRT_ONLY_VCS)
++#else
++/*******/
+ 	kvm_pv_disable_apf();
++/* eCS */
++#endif
++/*******/
+ 	kvm_disable_steal_time();
+ }
+ 
+@@ -425,15 +448,28 @@ static void __init kvm_smp_prepare_boot_cpu(void)
+ 	kvm_guest_cpu_init();
+ 	native_smp_prepare_boot_cpu();
+ 	kvm_spinlock_init();
++/* eCS */
++        kvm_sched_init();
++/*******/
+ }
+ 
+ static void kvm_guest_cpu_offline(void)
+ {
+ 	kvm_disable_steal_time();
++/* eCS */
++        kvm_disable_ipi();
++/*******/
+ 	if (kvm_para_has_feature(KVM_FEATURE_PV_EOI))
+ 		wrmsrl(MSR_KVM_PV_EOI_EN, 0);
+ 	kvm_pv_disable_apf();
++/* eCS */
++#if defined(CONFIG_PARAVIRT_ONLY_VCS)
++#else
++/*******/
+ 	apf_task_wake_all();
++/* eCS */
++#endif
++/*******/
+ }
+ 
+ static int kvm_cpu_online(unsigned int cpu)
+@@ -453,10 +489,16 @@ static int kvm_cpu_down_prepare(unsigned int cpu)
+ }
+ #endif
+ 
++/* eCS */
++#ifndef CONFIG_PARAVIRT_ONLY_VCS
++/*******/
+ static void __init kvm_apf_trap_init(void)
+ {
+ 	set_intr_gate(14, async_page_fault);
+ }
++/* eCS */
++#endif
++/*******/
+ 
+ void __init kvm_guest_init(void)
+ {
+@@ -469,8 +511,16 @@ void __init kvm_guest_init(void)
+ 	register_reboot_notifier(&kvm_pv_reboot_nb);
+ 	for (i = 0; i < KVM_TASK_SLEEP_HASHSIZE; i++)
+ 		raw_spin_lock_init(&async_pf_sleepers[i].lock);
++
+ 	if (kvm_para_has_feature(KVM_FEATURE_ASYNC_PF))
++/* eCS */
++#ifdef CONFIG_PARAVIRT_ONLY_VCS
++#else
++/*******/
+ 		x86_init.irqs.trap_init = kvm_apf_trap_init;
++/* eCS */
++#endif
++/*******/
+ 
+ 	if (kvm_para_has_feature(KVM_FEATURE_STEAL_TIME)) {
+ 		has_steal_clock = 1;
+@@ -556,6 +606,150 @@ static __init int activate_jump_labels(void)
+ }
+ arch_initcall(activate_jump_labels);
+ 
++/* eCS */
++#ifdef CONFIG_PARAVIRT_IPI
++
++static void kvm_handle_ipi(int op, u64 val1, u64 val2)
++{
++        kvm_hypercall3(KVM_HC_IPI_DELIVERY, op, val1, val2);
++}
++
++static void kvm_issue_ipi(const struct cpumask *mask)
++{
++        int cpu = smp_processor_id();
++        struct kvm_ipi_cpu_list *icl = &per_cpu(ipi_cpu_list, cpu);
++
++        smp_mb();
++        cpumask_clear(&icl->cpus);
++        cpumask_copy(&icl->cpus, mask);
++        vcpu_issue_ipi(APIC_BASE_MSR + (APIC_ICR >> 4),
++                       APIC_DEST_PHYSICAL | CALL_FUNCTION_VECTOR |
++                       APIC_DM_FIXED);
++}
++
++static void kvm_ipi_update_cpumask(struct cpumask *mask)
++{
++        int cpu = smp_processor_id();
++        struct kvm_ipi_cpu_list *icl = &per_cpu(ipi_cpu_list, cpu);
++
++        cpumask_copy(mask, &icl->cpus);
++}
++
++void kvm_ipi_init(void)
++{
++        int cpu = smp_processor_id();
++        struct kvm_ipi_cpu_list *icl = &per_cpu(ipi_cpu_list, cpu);
++        u64 data = per_cpu(x86_cpu_to_apicid, cpu);
++
++        if (!kvm_para_available())
++                return;
++
++        pv_ipi_ops.handle_ipi = kvm_handle_ipi;
++        pv_ipi_ops.issue_ipi = kvm_issue_ipi;
++        pv_ipi_ops.update_cpumask = kvm_ipi_update_cpumask;
++
++#ifdef CONFIG_PARAVIRT_TLB
++        pv_mmu_ops.flush_tlb_others = paravirt_flush_tlb_others;
++#endif
++
++        vcpu_setup_ipi(slow_virt_to_phys(icl));
++        vcpu_update_apicid(cpu, data);
++        pr_info("kvm-paravirt-ipi: cpu %d, msr: %llx\n",
++                cpu, (unsigned long long) slow_virt_to_phys(icl));
++}
++
++void kvm_disable_ipi(void)
++{
++        vcpu_deinit_ipi();
++}
++
++#endif
++
++#ifdef CONFIG_PARAVIRT_VCS
++#ifdef CONFIG_X86_32
++__visible bool __kvm_vcpu_is_preempted_other(long cpu)
++{
++	struct kvm_steal_time *src = &per_cpu(steal_time, cpu);
++
++	return !!src->preempted;
++}
++PV_CALLEE_SAVE_REGS_THUNK(__kvm_vcpu_is_preempted_other);
++
++#else
++
++#include <asm/asm-offsets.h>
++
++extern bool __raw_callee_save___kvm_vcpu_is_preempted_other(long);
++
++/*
++ * Hand-optimize version for x86-64 to avoid 8 64-bit register saving and
++ * restoring to/from the stack.
++ */
++asm(
++".pushsection .text;"
++".global __raw_callee_save___kvm_vcpu_is_preempted_other;"
++".type __raw_callee_save___kvm_vcpu_is_preempted_other, @function;"
++"__raw_callee_save___kvm_vcpu_is_preempted_other:"
++"movq	__per_cpu_offset(,%rdi,8), %rax;"
++"cmpb	$0, " __stringify(KVM_STEAL_TIME_preempted) "+steal_time(%rax);"
++"setne	%al;"
++"ret;"
++".popsection");
++
++#endif
++
++/* XXX: hand optimization needed */
++__visible int __kvm_vcpu_get_fake_preempt_count(long cpu)
++{
++	struct kvm_steal_time *src = &per_cpu(steal_time, cpu);
++
++	return src->fake_preempt_count;
++}
++PV_CALLEE_SAVE_REGS_THUNK(__kvm_vcpu_get_fake_preempt_count);
++
++__visible bool __kvm_vcpu_pcpu_is_overloaded(long cpu)
++{
++    struct kvm_steal_time *src = &per_cpu(steal_time, cpu);
++    return !!src->overloaded;
++}
++PV_CALLEE_SAVE_REGS_THUNK(__kvm_vcpu_pcpu_is_overloaded);
++
++__visible void __kvm_vcpu_preempt_count(long cpu, int update, uint16_t type)
++{
++        struct kvm_steal_time *src = &per_cpu(steal_time, cpu);
++        src->preempt_count += update;
++        /* src->preempt_type = type; */
++}
++PV_CALLEE_SAVE_REGS_THUNK(__kvm_vcpu_preempt_count);
++
++__visible void __kvm_vcpu_fake_preempt_count(long cpu, int update, uint8_t type)
++{
++        struct kvm_steal_time *src = &per_cpu(steal_time, cpu);
++        src->fake_preempt_count += update;
++        /* src->fake_preempt_type = type; */
++}
++PV_CALLEE_SAVE_REGS_THUNK(__kvm_vcpu_fake_preempt_count);
++
++void __init kvm_sched_init(void)
++{
++	if (!kvm_para_available())
++		return;
++	if (kvm_para_has_feature(KVM_FEATURE_STEAL_TIME)) {
++		pv_sched_ops.vcpu_is_preempted =
++			PV_CALLEE_SAVE(__kvm_vcpu_is_preempted_other);
++                pv_sched_ops.pcpu_is_overloaded =
++                    PV_CALLEE_SAVE(__kvm_vcpu_pcpu_is_overloaded);
++                pv_sched_ops.vcpu_get_fake_preempt_count =
++                        PV_CALLEE_SAVE(__kvm_vcpu_get_fake_preempt_count);
++                pv_sched_ops.vcpu_preempt_count =
++                        PV_CALLEE_SAVE(__kvm_vcpu_preempt_count);
++                pv_sched_ops.vcpu_fake_preempt_count =
++                        PV_CALLEE_SAVE(__kvm_vcpu_fake_preempt_count);
++	}
++}
++#endif
++/*******/
++
+ #ifdef CONFIG_PARAVIRT_SPINLOCKS
+ 
+ /* Kick a cpu by its apicid. Used to wake up a halted vcpu */
+@@ -587,10 +781,20 @@ static void kvm_wait(u8 *ptr, u8 val)
+ 	 * for irq enabled case to avoid hang when lock info is overwritten
+ 	 * in irq spinlock slowpath and no spurious interrupt occur to save us.
+ 	 */
++/* eCS */
++#ifndef CONFIG_PARAVIRT_WAIT_HYPERCALL
++/*******/
+ 	if (arch_irqs_disabled_flags(flags))
+ 		halt();
+ 	else
+ 		safe_halt();
++/* eCS */
++#else
++        if (!arch_irqs_disabled_flags(flags))
++                local_irq_disable();
++        kvm_hypercall0(KVM_HC_WAIT);
++#endif
++/*******/
+ 
+ out:
+ 	local_irq_restore(flags);
+diff --git a/arch/x86/kernel/paravirt.c b/arch/x86/kernel/paravirt.c
+index bc0a849..eb51194 100644
+--- a/arch/x86/kernel/paravirt.c
++++ b/arch/x86/kernel/paravirt.c
+@@ -1,3 +1,4 @@
++// SPDX-License-Identifier: GPL-2.0-or-later
+ /*  Paravirtualization interfaces
+     Copyright (C) 2006 Rusty Russell IBM Corporation
+ 
+@@ -125,9 +126,19 @@ static void *get_call_destination(u8 type)
+ 		.pv_cpu_ops = pv_cpu_ops,
+ 		.pv_irq_ops = pv_irq_ops,
+ 		.pv_mmu_ops = pv_mmu_ops,
++/* eCS */
++#ifdef CONFIG_PARAVIRT_VCS
++                .pv_sched_ops = pv_sched_ops,
++#endif
++/*******/
+ #ifdef CONFIG_PARAVIRT_SPINLOCKS
+ 		.pv_lock_ops = pv_lock_ops,
+ #endif
++/* eCS */
++#ifdef CONFIG_PARAVIRT_IPI
++                .pv_ipi_ops = pv_ipi_ops,
++#endif
++/*******/
+ 	};
+ 	return *((void **)&tmpl + type);
+ }
+@@ -466,8 +477,97 @@ struct pv_mmu_ops pv_mmu_ops __ro_after_init = {
+ 	.set_fixmap = native_set_fixmap,
+ };
+ 
++/* eCS */
++#ifdef CONFIG_PARAVIRT_VCS
++__visible int __native_vcpu_get_fake_preempt_count(long cpu)
++{
++	return 0;
++}
++PV_CALLEE_SAVE_REGS_THUNK(__native_vcpu_get_fake_preempt_count);
++
++__visible void __native_vcpu_preempt_count(long cpu, int update, uint16_t type)
++{
++}
++PV_CALLEE_SAVE_REGS_THUNK(__native_vcpu_preempt_count);
++
++
++__visible void __native_vcpu_fake_preempt_count(long cpu, int update,
++                                                uint8_t type)
++{
++}
++PV_CALLEE_SAVE_REGS_THUNK(__native_vcpu_fake_preempt_count);
++
++bool pv_is_native_vcpu_get_fake_preempt_count(void)
++{
++        return pv_sched_ops.vcpu_get_fake_preempt_count.func ==
++		__raw_callee_save___native_vcpu_get_fake_preempt_count;
++}
++
++bool pv_is_native_vcpu_preempt_count(void)
++{
++        return pv_sched_ops.vcpu_preempt_count.func ==
++                __raw_callee_save___native_vcpu_preempt_count;
++}
++
++bool pv_is_native_vcpu_fake_preempt_count(void)
++{
++        return pv_sched_ops.vcpu_fake_preempt_count.func ==
++                __raw_callee_save___native_vcpu_fake_preempt_count;
++}
++
++__visible bool __native_vcpu_is_preempted_other(long cpu)
++{
++	return false;
++}
++PV_CALLEE_SAVE_REGS_THUNK(__native_vcpu_is_preempted_other);
++
++bool pv_is_native_vcpu_is_preempted_other(void)
++{
++	return pv_sched_ops.vcpu_is_preempted.func ==
++		__raw_callee_save___native_vcpu_is_preempted_other;
++}
++
++__visible bool __native_pcpu_is_overloaded(long cpu)
++{
++    return false;
++}
++PV_CALLEE_SAVE_REGS_THUNK(__native_pcpu_is_overloaded);
++
++bool pv_is_native_pcpu_is_overloaded(void)
++{
++    return pv_sched_ops.pcpu_is_overloaded.func ==
++            __raw_callee_save___native_pcpu_is_overloaded;
++}
++
++struct pv_sched_ops pv_sched_ops __ro_after_init = {
++        .vcpu_is_preempted = PV_CALLEE_SAVE(__native_vcpu_is_preempted_other),
++        .pcpu_is_overloaded = PV_CALLEE_SAVE(__native_pcpu_is_overloaded),
++        .vcpu_get_fake_preempt_count = PV_CALLEE_SAVE(__native_vcpu_get_fake_preempt_count),
++        .vcpu_preempt_count = PV_CALLEE_SAVE(__native_vcpu_preempt_count),
++        .vcpu_fake_preempt_count = PV_CALLEE_SAVE(__native_vcpu_fake_preempt_count),
++};
++#endif
++
++#ifdef CONFIG_PARAVIRT_IPI
++
++struct pv_ipi_ops pv_ipi_ops __ro_after_init = {
++        .handle_ipi = paravirt_nop,
++        .issue_ipi = arch_send_call_function_ipi_mask,
++        .update_cpumask = paravirt_nop,
++};
++#endif
++/*******/
++
+ EXPORT_SYMBOL_GPL(pv_time_ops);
+ EXPORT_SYMBOL    (pv_cpu_ops);
+ EXPORT_SYMBOL    (pv_mmu_ops);
+ EXPORT_SYMBOL_GPL(pv_info);
+ EXPORT_SYMBOL    (pv_irq_ops);
++/* eCS */
++#ifdef CONFIG_PARAVIRT_VCS
++EXPORT_SYMBOL_GPL(pv_sched_ops);
++#endif
++#ifdef CONFIG_PARAVIRT_IPI
++EXPORT_SYMBOL_GPL(pv_ipi_ops);
++#endif
++/*******/
+diff --git a/arch/x86/kernel/paravirt_patch_32.c b/arch/x86/kernel/paravirt_patch_32.c
+index 553acbb..789991d 100644
+--- a/arch/x86/kernel/paravirt_patch_32.c
++++ b/arch/x86/kernel/paravirt_patch_32.c
+@@ -1,3 +1,4 @@
++// SPDX-License-Identifier: GPL-2.0-or-later
+ #include <asm/paravirt.h>
+ 
+ DEF_NATIVE(pv_irq_ops, irq_disable, "cli");
+@@ -14,6 +15,16 @@
+ DEF_NATIVE(pv_lock_ops, vcpu_is_preempted, "xor %eax, %eax");
+ #endif
+ 
++/* eCS */
++#if defined(CONFIG_PARAVIRT_VCS)
++DEF_NATIVE(pv_sched_ops, vcpu_is_preempted, "xor %eax, %eax");
++DEF_NATIVE(pv_sched_ops, vcpu_get_fake_preempt_count, "xor %eax, %eax");
++DEF_NATIVE(pv_sched_ops, pcpu_is_overloaded, "xor %eax, %eax");
++DEF_NATIVE(pv_sched_ops, vcpu_preempt_count, "");
++DEF_NATIVE(pv_sched_ops, vcpu_fake_preempt_count, "");
++#endif
++/*******/
++
+ unsigned paravirt_patch_ident_32(void *insnbuf, unsigned len)
+ {
+ 	/* arg in %eax, return in %eax */
+@@ -28,6 +39,13 @@ unsigned paravirt_patch_ident_64(void *insnbuf, unsigned len)
+ 
+ extern bool pv_is_native_spin_unlock(void);
+ extern bool pv_is_native_vcpu_is_preempted(void);
++/* eCS */
++extern bool pv_is_native_pcpu_is_overloaded(void);
++extern bool pv_is_native_vcpu_is_preempted_other(void);
++extern bool pv_is_native_vcpu_get_fake_preempt_count(void);
++extern bool pv_is_native_vcpu_preempt_count(void);
++extern bool pv_is_native_vcpu_fake_preempt_count(void);
++/*******/
+ 
+ unsigned native_patch(u8 type, u16 clobbers, void *ibuf,
+ 		      unsigned long addr, unsigned len)
+@@ -67,6 +85,50 @@ unsigned native_patch(u8 type, u16 clobbers, void *ibuf,
+ 			goto patch_default;
+ #endif
+ 
++/* eCS */
++#if defined(CONFIG_PARAVIRT_VCS)
++		case PARAVIRT_PATCH(pv_lock_ops.vcpu_is_preempted):
++			if (pv_is_native_vcpu_is_preempted_other()) {
++				start = start_pv_sched_ops_vcpu_is_preempted;
++				end   = end_pv_sched_ops_vcpu_is_preempted;
++				goto patch_site;
++			}
++			goto patch_default;
++
++		case PARAVIRT_PATCH(pv_sched_ops.pcpu_is_overloaded):
++			if (pv_is_native_pcpu_is_overloaded()) {
++				start = start_pv_sched_ops_pcpu_is_overloaded;
++				end   = end_pv_sched_ops_pcpu_is_overloaded;
++				goto patch_site;
++			}
++			goto patch_default;
++
++                case PARAVIRT_PATCH(pv_sched_ops.vcpu_get_fake_preempt_count):
++                        if (pv_is_native_vcpu_get_fake_preempt_count()) {
++                                start = start_pv_sched_ops_vcpu_get_fake_preempt_count;
++                                end   = end_pv_sched_ops_vcpu_get_fake_preempt_count;
++                                goto patch_site;
++                        }
++                        goto patch_default;
++
++                case PARAVIRT_PATCH(pv_sched_ops.vcpu_preempt_count):
++                        if (pv_is_native_vcpu_preempt_count()) {
++                                start = start_pv_sched_ops_vcpu_preempt_count;
++                                end = end_pv_sched_ops_vcpu_preempt_count;
++                                goto patch_site;
++                        }
++                        goto patch_default;
++
++                case PARAVIRT_PATCH(pv_sched_ops.vcpu_fake_preempt_count):
++                        if (pv_is_native_vcpu_fake_preempt_count()) {
++                                start = start_pv_sched_ops_vcpu_fake_preempt_count;
++                                end = end_pv_sched_ops_vcpu_fake_preempt_count;
++                                goto patch_site;
++                        }
++                        goto patch_default;
++#endif
++/*******/
++
+ 	default:
+ patch_default: __maybe_unused
+ 		ret = paravirt_patch_default(type, clobbers, ibuf, addr, len);
+diff --git a/arch/x86/kernel/paravirt_patch_64.c b/arch/x86/kernel/paravirt_patch_64.c
+index 11aaf1e..83da700 100644
+--- a/arch/x86/kernel/paravirt_patch_64.c
++++ b/arch/x86/kernel/paravirt_patch_64.c
+@@ -1,3 +1,4 @@
++// SPDX-License-Identifier: GPL-2.0-or-later
+ #include <asm/paravirt.h>
+ #include <asm/asm-offsets.h>
+ #include <linux/stringify.h>
+@@ -23,6 +24,16 @@
+ DEF_NATIVE(pv_lock_ops, vcpu_is_preempted, "xor %rax, %rax");
+ #endif
+ 
++/* eCS */
++#if defined(CONFIG_PARAVIRT_VCS)
++DEF_NATIVE(pv_sched_ops, vcpu_is_preempted, "xor %rax, %rax");
++DEF_NATIVE(pv_sched_ops, vcpu_get_fake_preempt_count, "xor %rax, %rax");
++DEF_NATIVE(pv_sched_ops, pcpu_is_overloaded, "xor %eax, %eax");
++DEF_NATIVE(pv_sched_ops, vcpu_preempt_count, "");
++DEF_NATIVE(pv_sched_ops, vcpu_fake_preempt_count, "");
++#endif
++/*******/
++
+ unsigned paravirt_patch_ident_32(void *insnbuf, unsigned len)
+ {
+ 	return paravirt_patch_insns(insnbuf, len,
+@@ -37,6 +48,13 @@ unsigned paravirt_patch_ident_64(void *insnbuf, unsigned len)
+ 
+ extern bool pv_is_native_spin_unlock(void);
+ extern bool pv_is_native_vcpu_is_preempted(void);
++/* eCS */
++extern bool pv_is_native_pcpu_is_overloaded(void);
++extern bool pv_is_native_vcpu_is_preempted_other(void);
++extern bool pv_is_native_vcpu_get_fake_preempt_count(void);
++extern bool pv_is_native_vcpu_preempt_count(void);
++extern bool pv_is_native_vcpu_fake_preempt_count(void);
++/*******/
+ 
+ unsigned native_patch(u8 type, u16 clobbers, void *ibuf,
+ 		      unsigned long addr, unsigned len)
+@@ -74,9 +92,54 @@ unsigned native_patch(u8 type, u16 clobbers, void *ibuf,
+ 			if (pv_is_native_vcpu_is_preempted()) {
+ 				start = start_pv_lock_ops_vcpu_is_preempted;
+ 				end   = end_pv_lock_ops_vcpu_is_preempted;
++/* eCS */
++				goto patch_default;
++			}
++			goto patch_default;
++#endif
++#if defined(CONFIG_PARAVIRT_VCS)
++		case PARAVIRT_PATCH(pv_sched_ops.vcpu_is_preempted):
++			if (pv_is_native_vcpu_is_preempted_other()) {
++				start = start_pv_sched_ops_vcpu_is_preempted;
++				end   = end_pv_sched_ops_vcpu_is_preempted;
++				goto patch_default;
++			}
++			goto patch_default;
++
++                case PARAVIRT_PATCH(pv_sched_ops.pcpu_is_overloaded):
++			if (pv_is_native_pcpu_is_overloaded()) {
++				start = start_pv_sched_ops_pcpu_is_overloaded;
++				end   = end_pv_sched_ops_pcpu_is_overloaded;
++/*******/
+ 				goto patch_site;
+ 			}
+ 			goto patch_default;
++
++/* eCS */
++		case PARAVIRT_PATCH(pv_sched_ops.vcpu_get_fake_preempt_count):
++			if (pv_is_native_vcpu_get_fake_preempt_count()) {
++				start = start_pv_sched_ops_vcpu_get_fake_preempt_count;
++				end   = end_pv_sched_ops_vcpu_get_fake_preempt_count;
++				goto patch_default;
++			}
++			goto patch_default;
++
++                case PARAVIRT_PATCH(pv_sched_ops.vcpu_preempt_count):
++                        if (pv_is_native_vcpu_preempt_count()) {
++                                start = start_pv_sched_ops_vcpu_preempt_count;
++                                end = end_pv_sched_ops_vcpu_preempt_count;
++                                goto patch_default;
++                        }
++                        goto patch_default;
++
++                case PARAVIRT_PATCH(pv_sched_ops.vcpu_fake_preempt_count):
++                        if (pv_is_native_vcpu_fake_preempt_count()) {
++                                start = start_pv_sched_ops_vcpu_fake_preempt_count;
++                                end = end_pv_sched_ops_vcpu_fake_preempt_count;
++                                goto patch_default;
++                        }
++                        goto patch_default;
++/*******/
+ #endif
+ 
+ 	default:
+diff --git a/arch/x86/kvm/vmx.c b/arch/x86/kvm/vmx.c
+index c6ef294..d1f4692 100644
+--- a/arch/x86/kvm/vmx.c
++++ b/arch/x86/kvm/vmx.c
+@@ -1,3 +1,4 @@
++// SPDX-License-Identifier: GPL-2.0-only
+ /*
+  * Kernel-based Virtual Machine driver for Linux
+  *
+@@ -1227,6 +1228,13 @@ static inline bool cpu_has_vmx_invept_global(void)
+ 	return vmx_capability.ept & VMX_EPT_EXTENT_GLOBAL_BIT;
+ }
+ 
++/* eCS */
++static inline bool cpu_has_vmx_invvpid_single_addr(void)
++{
++        return vmx_capability.vpid & VMX_VPID_EXTENT_INDIVIDUAL_ADDR_BIT;
++}
++/*******/
++
+ static inline bool cpu_has_vmx_invvpid_single(void)
+ {
+ 	return vmx_capability.vpid & VMX_VPID_EXTENT_SINGLE_CONTEXT_BIT;
+@@ -4103,11 +4111,31 @@ static inline void __vmx_flush_tlb(struct kvm_vcpu *vcpu, int vpid)
+ 	}
+ }
+ 
++/* eCS */
++static inline void __vmx_flush_tlb_addr(int vpid, unsigned long addr)
++{
++        if (vpid == 0)
++                return;
++
++        if (cpu_has_vmx_invvpid_single_addr())
++                __invvpid(VMX_VPID_EXTENT_INDIVIDUAL_ADDR, vpid, addr);
++        else
++                vpid_sync_context(vpid);
++}
++/*******/
++
+ static void vmx_flush_tlb(struct kvm_vcpu *vcpu)
+ {
+ 	__vmx_flush_tlb(vcpu, to_vmx(vcpu)->vpid);
+ }
+ 
++/* eCS */
++static void vmx_flush_tlb_addr(struct kvm_vcpu *vcpu, unsigned long addr)
++{
++        __vmx_flush_tlb_addr(to_vmx(vcpu)->vpid, addr);
++}
++/*******/
++
+ static void vmx_flush_tlb_ept_only(struct kvm_vcpu *vcpu)
+ {
+ 	if (enable_ept)
+@@ -11676,6 +11704,9 @@ static void vmx_setup_mce(struct kvm_vcpu *vcpu)
+ 	.set_rflags = vmx_set_rflags,
+ 
+ 	.tlb_flush = vmx_flush_tlb,
++/* eCS */
++        .tlb_flush_addr = vmx_flush_tlb_addr,
++/*******/
+ 
+ 	.run = vmx_vcpu_run,
+ 	.handle_exit = vmx_handle_exit,
+diff --git a/arch/x86/kvm/x86.c b/arch/x86/kvm/x86.c
+index 272320e..e2a2549 100644
+--- a/arch/x86/kvm/x86.c
++++ b/arch/x86/kvm/x86.c
+@@ -1,3 +1,4 @@
++// SPDX-License-Identifier: GPL-2.0-only
+ /*
+  * Kernel-based Virtual Machine driver for Linux
+  *
+@@ -67,6 +68,11 @@
+ #include <asm/div64.h>
+ #include <asm/irq_remapping.h>
+ 
++/* eCS */
++#include <uapi/linux/sched/types.h>
++#include <linux/sched/stat.h>
++/*******/
++
+ #define CREATE_TRACE_POINTS
+ #include "trace.h"
+ 
+@@ -75,6 +81,13 @@
+ u64 __read_mostly kvm_mce_cap_supported = MCG_CTL_P | MCG_SER_P;
+ EXPORT_SYMBOL_GPL(kvm_mce_cap_supported);
+ 
++/* eCS */
++#define KVM_MIN_NICE            (-6)
++#define KVM_NORMAL_NICE         (0)
++#define KVM_MAX_NICE            (7)
++#define MAX_EXTRA_SCHEDULES     (8)
++/*******/
++
+ #define emul_to_vcpu(ctxt) \
+ 	container_of(ctxt, struct kvm_vcpu, arch.emulate_ctxt)
+ 
+@@ -192,6 +205,11 @@ struct kvm_stats_debugfs_item debugfs_entries[] = {
+ 	{ "largepages", VM_STAT(lpages) },
+ 	{ "max_mmu_page_hash_collisions",
+ 		VM_STAT(max_mmu_page_hash_collisions) },
++/* eCS */
++        { "fake_vcs", VCPU_STAT(fake_vcs) },
++        { "vcs", VCPU_STAT(vcs) },
++        { "avoided_preempts", VCPU_STAT(avoided_preempts) },
++/*******/
+ 	{ NULL }
+ };
+ 
+@@ -2115,6 +2133,10 @@ static void record_steal_time(struct kvm_vcpu *vcpu)
+ 		vcpu->arch.st.last_steal;
+ 	vcpu->arch.st.last_steal = current->sched_info.run_delay;
+ 
++/* eCS */
++        vcpu->arch.st.steal.overloaded = !single_task_running();
++/*******/
++
+ 	kvm_write_guest_cached(vcpu->kvm, &vcpu->arch.st.stime,
+ 		&vcpu->arch.st.steal, sizeof(struct kvm_steal_time));
+ 
+@@ -2815,6 +2837,158 @@ static bool need_emulate_wbinvd(struct kvm_vcpu *vcpu)
+ 	return kvm_arch_has_noncoherent_dma(vcpu->kvm);
+ }
+ 
++/* eCS */
++static inline void kvm_migrate_timers(struct kvm_vcpu *vcpu)
++{
++	set_bit(KVM_REQ_MIGRATE_TIMER, &vcpu->requests);
++}
++
++static int kvm_vcpu_update_schedule(struct kvm_vcpu *vcpu)
++{
++        struct task_struct *task;
++        /* int nice_value = 0; */
++        unsigned int cs_version;
++
++        /*
++         * We do not need to check for any number of running tasks, this
++         * function will be only called when there is another task being
++         * scheduled by the kernel. Hence, it is explicit in this case.
++         */
++        rcu_read_lock();
++        task = get_pid_task(vcpu->pid, PIDTYPE_PID);
++        rcu_read_unlock();
++
++        cs_version = smp_load_acquire(&vcpu->cs_version);
++        ++cs_version;
++
++#if 0
++        /*
++         * The current strategy is that we are allowing the vCPU to be
++         * scheduled only once. Every alternate time, we allow the VM to run at
++         * its normal schedule.
++         */
++        if (vcpu->num_extra_schedules < MAX_EXTRA_SCHEDULES) {
++                if (cs_version % 2) {
++
++                        /*
++                         * We assing priority on the basis of number of running
++                         * processes. The base priority is already upgraded by two
++                         * times. However, if there are more than 2 processes running,
++                         * then in that case, we increase the task priority by 1 for
++                         * the time being.  */
++                        int nr_running = nr_running_tasks();
++                        nice_value = KVM_MIN_NICE - (nr_running - 1);
++                        if (nice_value < MIN_NICE)
++                                nice_value = MIN_NICE;
++
++                        set_user_nice_wlock(task, nice_value);
++                        ++vcpu->num_extra_schedules;
++
++                        /* printk(KERN_CRIT "%s: vcpu (%d): increasing the nice value from %d to %d, num sched: %Lu\n", */
++                        /*        __func__, vcpu->vcpu_id, vcpu->nice_value, nice_value, vcpu->num_extra_schedules); */
++                        vcpu->nice_value = nice_value;
++
++                } else {
++
++                        /* printk(KERN_CRIT "%s: vcpu (%d): decreasing the nice value from %d to %d, num sched: %Lu\n", */
++                        /*        __func__, vcpu->vcpu_id, vcpu->nice_value, KVM_NORMAL_NICE, vcpu->num_extra_schedules); */
++
++                        vcpu->nice_value = KVM_NORMAL_NICE;
++                        set_user_nice_wlock(task, KVM_NORMAL_NICE);
++                }
++        }
++#endif
++        smp_store_release(&vcpu->cs_version, cs_version);
++        return 0;
++}
++
++void kvm_vcpu_update_vcs_stat(struct kvm_vcpu *vcpu)
++{
++        if (unlikely(kvm_read_guest_cached(vcpu->kvm, &vcpu->arch.st.stime,
++                &vcpu->arch.st.steal, sizeof(struct kvm_steal_time))))
++                return;
++
++        if (vcpu->arch.st.steal.preempt_count > 0)
++                ++vcpu->stat.vcs;
++
++        if (vcpu->arch.st.steal.fake_preempt_count > 0)
++                ++vcpu->stat.fake_vcs;
++
++}
++
++int kvm_arch_check_and_update_schedule(struct kvm_vcpu *vcpu)
++{
++        /*
++         * Our approach is dependent on the steal time msr
++         */
++        if (!(vcpu->arch.st.msr_val & KVM_MSR_ENABLED))
++                goto out;
++
++        /*
++         * First reading the value in the hypervisor side to figure
++         * out whether there is any active CS
++         */
++        if (unlikely(kvm_read_guest_cached(vcpu->kvm, &vcpu->arch.st.stime,
++                &vcpu->arch.st.steal, sizeof(struct kvm_steal_time))))
++                goto out;
++
++        smp_rmb();
++        if (vcpu->arch.st.steal.preempt_count > 0 ||
++            vcpu->arch.st.steal.fake_preempt_count > 0 ||
++            vcpu->arch.st.steal.user_preempt_count > 0 ||
++            vcpu->cs_version % 2)
++                return kvm_vcpu_update_schedule(vcpu);
++
++     out:
++        return 1;
++}
++
++int kvm_arch_check_schedule(struct kvm_vcpu *vcpu)
++{
++        int ret = 0;
++        struct kvm_steal_time *st = &vcpu->arch.st.steal;
++
++        /*
++         * Our approach is dependent on the steal time msr
++         */
++        if (!(vcpu->arch.st.msr_val & KVM_MSR_ENABLED))
++                goto out;
++
++        /*
++         * First reading the value in the hypervisor side to figure
++         * out whether there is any active CS
++         */
++        if (unlikely(kvm_read_guest_cached(vcpu->kvm, &vcpu->arch.st.stime,
++                st, sizeof(struct kvm_steal_time))))
++                goto out;
++
++        smp_rmb();
++
++        ret = st->preempt_count > 0 || st->fake_preempt_count > 0;
++        if (ret) {
++                st->preempt_toggle = !st->preempt_toggle;
++                ret = ret && st->preempt_toggle;
++        }
++
++        if (st->preempt_count > 0)
++                ++vcpu->stat.vcs;
++
++        if (st->fake_preempt_count > 0)
++                ++vcpu->stat.fake_vcs;
++
++        if (ret)
++                ++vcpu->stat.avoided_preempts;
++
++        /* return ((vcpu->cs_version % 2 == 0) && */
++        /*         (vcpu->arch.st.steal.preempt_count > 0 || */
++        /*          vcpu->arch.st.steal.fake_preempt_count > 0 || */
++        /*          vcpu->arch.st.steal.user_preempt_count > 0)); */
++
++     out:
++        return ret;
++}
++/*******/
++
+ void kvm_arch_vcpu_load(struct kvm_vcpu *vcpu, int cpu)
+ {
+ 	/* Address WBINVD may be executed by guest */
+@@ -6235,6 +6409,129 @@ static void kvm_pv_kick_cpu_op(struct kvm *kvm, unsigned long flags, int apicid)
+ 	kvm_irq_delivery_to_apic(kvm, NULL, &lapic_irq, NULL);
+ }
+ 
++/* eCS */
++#ifdef CONFIG_PARAVIRT_TLB
++
++static void kvm_remote_vcpu_tlb_shootdown(void *info)
++{
++        struct vcpu_tlb_info *vinfo = info;
++
++        // defualt mode:
++        // all (linear + EPT mappings)
++        kvm_x86_ops->tlb_flush(vinfo->vcpu);
++
++        // only linear mappings
++        // kvm_x86_ops->tlb_flush_vpid_single_ctx(info->vcpu);
++
++        // single or all
++        /* if (!info->flush_end) */
++        /*         kvm_x86_ops->tlb_flush_vpid_single_ctx(info->vcpu, */
++        /*                                                info->flush_start); */
++        /* else */
++        /*         kvm_x86_ops->tlb_flush(info->vcpu); */
++}
++
++static int kvm_vcpu_tlb_shootdown(struct kvm_vcpu *vcpu, unsigned long start,
++                                  unsigned long end)
++{
++        int i;
++        struct kvm_vcpu *v;
++        struct vcpu_tlb_info info;
++
++        struct kvm *kvm = vcpu->kvm;
++        struct kvm_ipi_cpu_list *icl = &vcpu->arch.ipi_cpu_list.cpu_list;
++
++
++        if (kvm_read_guest_cached(kvm, &vcpu->arch.ipi_cpu_list.cpus,
++                                  icl, sizeof(struct kvm_ipi_cpu_list)))
++                BUG();
++
++        kvm_for_each_vcpu(i, v, kvm) {
++                if (v != vcpu &&
++                    test_bit(v->vcpu_id, cpumask_bits(&icl->cpus))) {
++                        info.vcpu = v;
++                        smp_call_function_single(v->cpu,
++                                                 kvm_remote_vcpu_tlb_shootdown,
++                                                 &info, 1);
++                }
++        }
++
++        return 0;
++}
++
++#endif
++
++#ifdef CONFIG_PARAVIRT_IPI
++
++static void kvm_vcpu_issue_ipi(struct kvm_vcpu *vcpu, u32 msr, u64 data)
++{
++        int i;
++
++        struct kvm_ipi_cpu_list *icl = &vcpu->arch.ipi_cpu_list.cpu_list;
++        struct kvm *kvm = vcpu->kvm;
++        u64 *apicid_mapping = kvm->guest_x86_to_apicid_list;
++
++        if (kvm_read_guest_cached(kvm, &vcpu->arch.ipi_cpu_list.cpus,
++                                  icl, sizeof(struct kvm_ipi_cpu_list)))
++                BUG();
++        /*
++         * XXX: Here, I am assuming that the number of CPUs (NR_CPUS) is same
++         * in both host and guest for the PoC, but this is not always going to
++         * hold true. We need to also obtain the nr_cpu info from the guest
++         * as well.
++         */
++        for_each_cpu(i, &icl->cpus) {
++                s64 bcount, acount;
++                struct kvm_vcpu *rvcpu = kvm->vcpus[i];
++                bool preempt_flag = smp_load_acquire(&rvcpu->preempted);
++                u64 apicid = (u64)apicid_mapping[i];
++
++                bcount = atomic64_read_acquire(&rvcpu->sched_count);
++                kvm_x2apic_msr_write(vcpu, msr, apicid << 32 | (u32) data);
++                acount = atomic64_read_acquire(&rvcpu->sched_count);
++
++                if (preempt_flag && acount - bcount <= 2) {
++                        __cpumask_clear_cpu(i, &icl->cpus);
++                }
++        }
++
++        kvm_write_guest_cached(kvm, &vcpu->arch.ipi_cpu_list.cpus,
++                               icl, sizeof(struct kvm_ipi_cpu_list));
++}
++
++static int kvm_pv_handle_ipi(struct kvm_vcpu *vcpu, int id, u64 val1, u64 val2)
++{
++        switch(id) {
++        case KVM_VCPU_IPI_CPULIST_REG:
++        case KVM_VCPU_IPI_CPULIST_DEREG:
++                if (kvm_gfn_to_hva_cache_init(vcpu->kvm,
++                                              &vcpu->arch.ipi_cpu_list.cpus,
++                                              val1,
++                                              sizeof(struct kvm_ipi_cpu_list)))
++                        BUG();
++                break;
++        case KVM_VCPU_IPI_ISSUE:
++                kvm_vcpu_issue_ipi(vcpu, val1, val2);
++                break;
++        case KVM_VCPU_APICID_REG:
++                vcpu->kvm->guest_x86_to_apicid_list[val1] = val2;
++                break;
++        default:
++                BUG();
++        }
++        return 0;
++}
++
++#endif
++
++#ifdef CONFIG_PARAVIRT_WAIT_HYPERCALL
++static int kvm_vcpu_pv_wait(struct kvm_vcpu *vcpu)
++{
++        return kvm_vcpu_halt(vcpu);
++}
++#endif
++/*******/
++
+ void kvm_vcpu_deactivate_apicv(struct kvm_vcpu *vcpu)
+ {
+ 	vcpu->arch.apicv_active = false;
+@@ -6286,6 +6583,27 @@ int kvm_emulate_hypercall(struct kvm_vcpu *vcpu)
+ 		ret = kvm_pv_clock_pairing(vcpu, a0, a1);
+ 		break;
+ #endif
++
++/* eCS */
++#ifdef CONFIG_PARAVIRT_IPI
++        case KVM_HC_IPI_DELIVERY:
++                ret = kvm_pv_handle_ipi(vcpu, a0, a1, a2);
++                break;
++#endif
++
++#ifdef CONFIG_PARAVIRT_TLB
++        case KVM_HC_TLB:
++                ret = kvm_vcpu_tlb_shootdown(vcpu, a0, a1);
++                break;
++#endif
++
++#ifdef CONFIG_PARAVIRT_WAIT_HYPERCALL
++        case KVM_HC_WAIT:
++                ret = kvm_vcpu_pv_wait(vcpu);
++                break;
++#endif
++/*******/
++
+ 	default:
+ 		ret = -KVM_ENOSYS;
+ 		break;
+diff --git a/arch/x86/mm/tlb.c b/arch/x86/mm/tlb.c
+index 014d07a..f5364de 100644
+--- a/arch/x86/mm/tlb.c
++++ b/arch/x86/mm/tlb.c
+@@ -1,3 +1,4 @@
++// SPDX-License-Identifier: GPL-2.0-only
+ #include <linux/init.h>
+ 
+ #include <linux/mm.h>
+@@ -14,6 +15,12 @@
+ #include <asm/uv/uv.h>
+ #include <linux/debugfs.h>
+ 
++/* eCS */
++#ifdef CONFIG_PARAVIRT_TLB
++#include <linux/kvm_para.h>
++#endif
++/*******/
++
+ /*
+  *	TLB flushing, formerly SMP-only
+  *		c/o Linus Torvalds.
+@@ -227,6 +234,24 @@ void native_flush_tlb_others(const struct cpumask *cpumask,
+ 			       (void *)info, 1);
+ }
+ 
++/* eCS */
++#ifdef CONFIG_PARAVIRT_TLB
++
++void paravirt_flush_tlb_others(const struct cpumask *cpumask,
++                               const struct flush_tlb_info *info)
++{
++        int cpu = smp_processor_id();
++        struct kvm_ipi_cpu_list *icl = &per_cpu(ipi_cpu_list, cpu);
++
++        smp_mb();
++        cpumask_clear(&icl->cpus);
++        cpumask_copy(&icl->cpus, cpumask);
++        kvm_hypercall2(KVM_HC_TLB, info->start, info->end);
++}
++
++#endif
++/*******/
++
+ /*
+  * See Documentation/x86/tlb.txt for details.  We choose 33
+  * because it is large enough to cover the vast majority (at
+diff --git a/include/asm-generic/qrwlock.h b/include/asm-generic/qrwlock.h
+index 7d026bf..84ba0c1 100644
+--- a/include/asm-generic/qrwlock.h
++++ b/include/asm-generic/qrwlock.h
+@@ -1,3 +1,4 @@
++/* SPDX-License-Identifier: GPL-2.0-or-later */
+ /*
+  * Queue read/write lock
+  *
+@@ -24,6 +25,13 @@
+ 
+ #include <asm-generic/qrwlock_types.h>
+ 
++/* eCS */
++#ifdef CONFIG_PARAVIRT_VCS
++#include <asm/paravirt.h>
++DECLARE_PER_CPU_READ_MOSTLY(int, cpu_number);
++#endif
++/*******/
++
+ /*
+  * Writer states & reader shift and bias.
+  *
+@@ -82,8 +90,17 @@ static inline int queued_read_trylock(struct qrwlock *lock)
+ 	cnts = atomic_read(&lock->cnts);
+ 	if (likely(!(cnts & _QW_WMASK))) {
+ 		cnts = (u32)atomic_add_return_acquire(_QR_BIAS, &lock->cnts);
+-		if (likely(!(cnts & _QW_WMASK)))
++/* eCS */
++		if (likely(!(cnts & _QW_WMASK))) {
++#ifdef CONFIG_PARAVIRT_RWLOCK_RD_VCS
++                        vcpu_preempt_count(this_cpu_read(cpu_number), 1,
++                                           KVM_RWL_READER);
++#endif
++/*******/
+ 			return 1;
++/* eCS */
++                }
++/*******/
+ 		atomic_sub(_QR_BIAS, &lock->cnts);
+ 	}
+ 	return 0;
+@@ -97,13 +114,25 @@ static inline int queued_read_trylock(struct qrwlock *lock)
+ static inline int queued_write_trylock(struct qrwlock *lock)
+ {
+ 	u32 cnts;
++/* eCS */
++        int ret;
++/*******/
+ 
+ 	cnts = atomic_read(&lock->cnts);
+ 	if (unlikely(cnts))
+ 		return 0;
+ 
+-	return likely(atomic_cmpxchg_acquire(&lock->cnts,
+-					     cnts, cnts | _QW_LOCKED) == cnts);
++/* eCS */
++	ret = atomic_cmpxchg_acquire(&lock->cnts,
++                                     cnts, cnts | _QW_LOCKED) == cnts;
++        if (likely(ret)) {
++#ifdef CONFIG_PARAVIRT_RWLOCK_WR_VCS
++                vcpu_preempt_count(this_cpu_read(cpu_number), 1,
++                                   KVM_RWL_WRITER);
++#endif
++        }
++        return ret;
++/*******/
+ }
+ /**
+  * queued_read_lock - acquire read lock of a queue rwlock
+@@ -114,11 +143,25 @@ static inline void queued_read_lock(struct qrwlock *lock)
+ 	u32 cnts;
+ 
+ 	cnts = atomic_add_return_acquire(_QR_BIAS, &lock->cnts);
+-	if (likely(!(cnts & _QW_WMASK)))
++/* eCS */
++	if (likely(!(cnts & _QW_WMASK))) {
++#ifdef CONFIG_PARAVIRT_RWLOCK_RD_VCS
++                vcpu_preempt_count(this_cpu_read(cpu_number), 1,
++                                   KVM_RWL_READER);
++#endif
++/*******/
+ 		return;
++/* eCS */
++        }
++/*******/
+ 
+ 	/* The slowpath will decrement the reader count, if necessary. */
+ 	queued_read_lock_slowpath(lock, cnts);
++/* eCS */
++#ifdef CONFIG_PARAVIRT_RWLOCK_RD_VCS
++        vcpu_preempt_count(this_cpu_read(cpu_number), 1, KVM_RWL_READER);
++#endif
++/*******/
+ }
+ 
+ /**
+@@ -128,10 +171,24 @@ static inline void queued_read_lock(struct qrwlock *lock)
+ static inline void queued_write_lock(struct qrwlock *lock)
+ {
+ 	/* Optimize for the unfair lock case where the fair flag is 0. */
+-	if (atomic_cmpxchg_acquire(&lock->cnts, 0, _QW_LOCKED) == 0)
++/* eCS */
++	if (atomic_cmpxchg_acquire(&lock->cnts, 0, _QW_LOCKED) == 0) {
++#ifdef CONFIG_PARAVIRT_RWLOCK_WR_VCS
++                vcpu_preempt_count(this_cpu_read(cpu_number), 1,
++                                   KVM_RWL_WRITER);
++#endif
++/*******/
+ 		return;
++/* eCS */
++        }
++/*******/
+ 
+ 	queued_write_lock_slowpath(lock);
++/* eCS */
++#ifdef CONFIG_PARAVIRT_RWLOCK_WR_VCS
++        vcpu_preempt_count(this_cpu_read(cpu_number), 1, KVM_RWL_WRITER);
++#endif
++/*******/
+ }
+ 
+ /**
+@@ -144,6 +201,11 @@ static inline void queued_read_unlock(struct qrwlock *lock)
+ 	 * Atomically decrement the reader count
+ 	 */
+ 	(void)atomic_sub_return_release(_QR_BIAS, &lock->cnts);
++/* eCS */
++#ifdef CONFIG_PARAVIRT_RWLOCK_RD_VCS
++        vcpu_preempt_count(this_cpu_read(cpu_number), -1, KVM_NO_CS);
++#endif
++/*******/
+ }
+ 
+ /**
+@@ -163,6 +225,11 @@ static inline u8 *__qrwlock_write_byte(struct qrwlock *lock)
+ static inline void queued_write_unlock(struct qrwlock *lock)
+ {
+ 	smp_store_release(__qrwlock_write_byte(lock), 0);
++/* eCS */
++#ifdef CONFIG_PARAVIRT_RWLOCK_WR_VCS
++        vcpu_preempt_count(this_cpu_read(cpu_number), -1, KVM_NO_CS);
++#endif
++/*******/
+ }
+ 
+ /*
+diff --git a/include/asm-generic/qspinlock.h b/include/asm-generic/qspinlock.h
+index 9f0681b..5b52cf2 100644
+--- a/include/asm-generic/qspinlock.h
++++ b/include/asm-generic/qspinlock.h
+@@ -1,3 +1,4 @@
++/* SPDX-License-Identifier: GPL-2.0-only */
+ /*
+  * Queued spinlock
+  *
+@@ -79,11 +80,29 @@ static __always_inline int queued_spin_is_contended(struct qspinlock *lock)
+  * @lock : Pointer to queued spinlock structure
+  * Return: 1 if lock acquired, 0 if failed
+  */
+-static __always_inline int queued_spin_trylock(struct qspinlock *lock)
++/* eCS */ 
++#ifdef CONFIG_PARAVIRT_SPINLOCKS
++#include <asm/paravirt.h>
++DECLARE_PER_CPU_READ_MOSTLY(int, cpu_number);
++#endif
++
++static __always_inline int queued_spin_trylock(struct qspinlock *lock,
++                                               int flag)
++/*******/
+ {
+ 	if (!atomic_read(&lock->val) &&
+-	   (atomic_cmpxchg_acquire(&lock->val, 0, _Q_LOCKED_VAL) == 0))
++/* eCS */ 
++	   (atomic_cmpxchg_acquire(&lock->val, 0, _Q_LOCKED_VAL) == 0)) {
++#ifdef CONFIG_PARAVIRT_SPINLOCK_VCS
++                if (flag)
++                        vcpu_preempt_count(this_cpu_read(cpu_number), 1,
++                                           KVM_SPN_HOLDER);
++#endif
++/*******/
+ 		return 1;
++/* eCS */ 
++        }
++/*******/
+ 	return 0;
+ }
+ 
+@@ -98,9 +117,22 @@ static __always_inline void queued_spin_lock(struct qspinlock *lock)
+ 	u32 val;
+ 
+ 	val = atomic_cmpxchg_acquire(&lock->val, 0, _Q_LOCKED_VAL);
+-	if (likely(val == 0))
++/* eCS */ 
++	if (likely(val == 0)) {
++#ifdef CONFIG_PARAVIRT_SPINLOCK_VCS
++                vcpu_preempt_count(this_cpu_read(cpu_number), 1, KVM_SPN_HOLDER);
++#endif
++/*******/
+ 		return;
++/* eCS */ 
++        }
++/*******/
+ 	queued_spin_lock_slowpath(lock, val);
++/* eCS */ 
++#ifdef CONFIG_PARAVIRT_SPINLOCK_VCS
++        vcpu_preempt_count(this_cpu_read(cpu_number), 1, KVM_SPN_HOLDER);
++#endif
++/*******/
+ }
+ 
+ #ifndef queued_spin_unlock
+@@ -113,6 +145,11 @@ static __always_inline void queued_spin_unlock(struct qspinlock *lock)
+ 	/*
+ 	 * unlock() needs release semantics:
+ 	 */
++/* eCS */ 
++#ifdef CONFIG_PARAVIRT_SPINLOCK_VCS
++        vcpu_preempt_count(this_cpu_read(cpu_number), -1, KVM_NO_CS);
++#endif
++/*******/
+ 	(void)atomic_sub_return_release(_Q_LOCKED_VAL, &lock->val);
+ }
+ #endif
+@@ -132,7 +169,9 @@ static __always_inline bool virt_spin_lock(struct qspinlock *lock)
+ #define arch_spin_is_contended(l)	queued_spin_is_contended(l)
+ #define arch_spin_value_unlocked(l)	queued_spin_value_unlocked(l)
+ #define arch_spin_lock(l)		queued_spin_lock(l)
+-#define arch_spin_trylock(l)		queued_spin_trylock(l)
++/* eCS */ 
++#define arch_spin_trylock(l)		queued_spin_trylock(l, 1)
++/*******/
+ #define arch_spin_unlock(l)		queued_spin_unlock(l)
+ #define arch_spin_lock_flags(l, f)	queued_spin_lock(l)
+ #define arch_spin_unlock_wait(l)	queued_spin_unlock_wait(l)
+diff --git a/include/linux/kvm_host.h b/include/linux/kvm_host.h
+index 21a6fd6..f7a3c85 100644
+--- a/include/linux/kvm_host.h
++++ b/include/linux/kvm_host.h
+@@ -1,3 +1,4 @@
++/* SPDX-License-Identifier: GPL-2.0-only */
+ #ifndef __KVM_HOST_H
+ #define __KVM_HOST_H
+ 
+@@ -272,8 +273,23 @@ struct kvm_vcpu {
+ 	} spin_loop;
+ #endif
+ 	bool preempted;
++/* eCS */
++#if defined(CONFIG_PARAVIRT_IPI) || defined(CONFIG_PARAVIRT_VCS)
++        atomic64_t sched_count;
++#endif
++/*******/
+ 	struct kvm_vcpu_arch arch;
+ 	struct dentry *debugfs_dentry;
++/* eCS */
++        /* Version to figure out the CS */
++        unsigned int cs_version;
++        /* Extra time spent */
++        u64 extra_time;
++        /* Number of times, we have got extra schedules */
++        u64 num_extra_schedules;
++        /* current task nice value */
++        int nice_value;
++/*******/
+ };
+ 
+ static inline int kvm_vcpu_exiting_guest_mode(struct kvm_vcpu *vcpu)
+@@ -389,6 +405,9 @@ struct kvm_memslots {
+ struct kvm {
+ 	spinlock_t mmu_lock;
+ 	struct mutex slots_lock;
++/* eCS */
++        bool should_boost;
++/*******/
+ 	struct mm_struct *mm; /* userspace tied to this vm */
+ 	struct kvm_memslots __rcu *memslots[KVM_ADDRESS_SPACE_NUM];
+ 	struct kvm_vcpu *vcpus[KVM_MAX_VCPUS];
+@@ -402,6 +421,9 @@ struct kvm {
+ 	atomic_t online_vcpus;
+ 	int created_vcpus;
+ 	int last_boosted_vcpu;
++/* eCS */
++        int vm_id;
++/*******/
+ 	struct list_head vm_list;
+ 	struct mutex lock;
+ 	struct kvm_io_bus __rcu *buses[KVM_NR_BUSES];
+@@ -439,6 +461,11 @@ struct kvm {
+ 	unsigned long mmu_notifier_seq;
+ 	long mmu_notifier_count;
+ #endif
++/* eCS */
++#ifdef CONFIG_PARAVIRT_IPI
++        u64 guest_x86_to_apicid_list[KVM_MAX_VCPUS];
++#endif
++/*******/
+ 	long tlbs_dirty;
+ 	struct list_head devices;
+ 	struct dentry *debugfs_dentry;
+@@ -785,6 +812,11 @@ int kvm_arch_vcpu_ioctl_set_guest_debug(struct kvm_vcpu *vcpu,
+ 
+ void kvm_arch_vcpu_free(struct kvm_vcpu *vcpu);
+ void kvm_arch_vcpu_load(struct kvm_vcpu *vcpu, int cpu);
++/* eCS */
++int kvm_arch_check_and_update_schedule(struct kvm_vcpu *vcpu);
++void kvm_vcpu_update_vcs_stat(struct kvm_vcpu *vcpu);
++int kvm_arch_check_schedule(struct kvm_vcpu *vcpu);
++/*******/
+ void kvm_arch_vcpu_put(struct kvm_vcpu *vcpu);
+ struct kvm_vcpu *kvm_arch_vcpu_create(struct kvm *kvm, unsigned int id);
+ int kvm_arch_vcpu_setup(struct kvm_vcpu *vcpu);
+@@ -1248,5 +1280,14 @@ static inline bool vcpu_valid_wakeup(struct kvm_vcpu *vcpu)
+ 	return true;
+ }
+ #endif /* CONFIG_HAVE_KVM_INVALID_WAKEUPS */
++/* eCS */
++#ifdef CONFIG_PARAVIRT_TLB
++struct vcpu_tlb_info {
++        struct kvm_vcpu *vcpu;
++        unsigned long start;
++        unsigned long end;
++};
++#endif
++/*******/
+ 
+ #endif
+diff --git a/include/linux/paravirt.h b/include/linux/paravirt.h
+new file mode 100644
+index 0000000..df79ba6
+--- /dev/null
++++ b/include/linux/paravirt.h
+@@ -0,0 +1,112 @@
++/* SPDX-License-Identifier: GPL-2.0-or-later */
++#ifndef __LINUX_PARAVIRT_H
++#define __LINUX_PARAVIRT_H
++
++#ifdef CONFIG_PARAVIRT_VCS
++#include <asm/paravirt.h>
++
++#define inc_fake_preempt_count(_t)                                             \
++        do {                                                                   \
++                preempt_disable();                                             \
++                smp_store_release(&current->vcs_preempt_state, 1);             \
++                vcpu_inc_fake_preempt_count(smp_processor_id(), (_t));         \
++                preempt_enable();                                              \
++        } while (0)
++
++#define dec_fake_preempt_count(_t)                                             \
++        do {                                                                   \
++                preempt_disable();                                             \
++                vcpu_dec_fake_preempt_count(smp_processor_id(), (_t));         \
++                smp_store_release(&current->vcs_preempt_state, 0);             \
++                preempt_enable();                                              \
++        } while (0)
++
++#define dec_if_vcs_preempt_count(_t)                                           \
++        do {                                                                   \
++                if (READ_ONCE((_t)->vcs_preempt_state)) {                      \
++                        int v =                                                \
++                              vcpu_get_fake_preempt_count(smp_processor_id()); \
++                        WRITE_ONCE((_t)->temp_vcs_count, v);                   \
++                        vcpu_update_fake_preempt_count(smp_processor_id(),     \
++                                                   (-1)*(_t)->temp_vcs_count,  \
++                                                   KVM_NO_CS);                 \
++                }                                                              \
++        } while (0)
++
++#define inc_if_vcs_preempt_count(_t)                                           \
++        do {                                                                   \
++                if (smp_load_acquire(&((_t)->vcs_preempt_state)))              \
++                        vcpu_update_fake_preempt_count(smp_processor_id(),     \
++                                                   (_t)->temp_vcs_count,       \
++                                                   KVM_MUTEX_HOLDER);          \
++        } while (0)
++
++#define is_vcpu_preempted(_t) vcpu_is_preempted_other(_t)
++
++#ifdef CONFIG_PARAVIRT_MUTEX_VCS
++#define inc_mutex_count()                                                      \
++        do {                                                                   \
++                inc_fake_preempt_count(KVM_MUTEX_HOLDER);                      \
++        } while (0)
++
++#define dec_mutex_count()                                                      \
++        do {                                                                   \
++                dec_fake_preempt_count(KVM_NO_CS);                             \
++        } while (0)
++#else
++#define inc_mutex_count() do { } while (0)
++#define dec_mutex_count() do { } while (0)
++#endif
++
++#ifdef PARAVIRT_RWSEM_WR_VCS
++#define inc_rwsem_wr_count()                                                   \
++        do {                                                                   \
++                inc_fake_preempt_count(KVM_RWSEM_WRITER);                      \
++        } while (0)
++
++#define dec_rwsem_wr_count()                                                   \
++        do {                                                                   \
++                dec_fake_preempt_count(KVM_NO_CS);                             \
++        } while (0)
++#else
++#define inc_rwsem_wr_count() do { } while (0)
++#define dec_rwsem_wr_count() do { } while (0)
++#endif
++
++#ifdef PARAVIRT_RWSEM_RD_VCS
++#define inc_rwsem_rd_count()                                                   \
++        do {                                                                   \
++                inc_fake_preempt_count(KVM_RWSEM_READER);                      \
++        } while (0)
++
++#define dec_rwsem_rd_count()                                                   \
++        do {                                                                   \
++                dec_fake_preempt_count(KVM_NO_CS);                             \
++        } while (0)
++#else
++#define inc_rwsem_rd_count() do { } while (0)
++#define dec_rwsem_rd_count() do { } while (0)
++#endif
++
++#else
++
++#define inc_mutex_count() do { } while (0)
++#define dec_mutex_count() do { } while (0)
++#define inc_rwsem_wr_count() do { } while (0)
++#define dec_rwsem_wr_count() do { } while (0)
++#define inc_rwsem_rd_count() do { } while (0)
++#define dec_rwsem_rd_count() do { } while (0)
++#define dec_if_vcs_preempt_count(_t) do { } while (0)
++#define inc_if_vcs_preempt_count(_t) do { } while (0)
++#define is_vcpu_preempted(_t) vcpu_is_preempted(_t)
++
++#endif
++
++
++#ifndef CONFIG_PARAVIRT_IPI
++#define send_call_function_ipi_mask(_m) arch_send_call_function_ipi_mask(_m)
++#define update_ipi_cpumask(_m) do { } while (0)
++#endif
++
++
++#endif /* __LINUX_PARAVIRT_H */
+diff --git a/include/linux/preempt.h b/include/linux/preempt.h
+index cae4612..794225f 100644
+--- a/include/linux/preempt.h
++++ b/include/linux/preempt.h
+@@ -1,3 +1,4 @@
++/* SPDX-License-Identifier: GPL-2.0-only */
+ #ifndef __LINUX_PREEMPT_H
+ #define __LINUX_PREEMPT_H
+ 
+@@ -293,6 +294,9 @@
+  * difference is intentional and depended upon by its users.
+  */
+ struct preempt_ops {
++/* eCS */
++        int  (*sched_check)(struct preempt_notifier *notifier);
++/*******/
+ 	void (*sched_in)(struct preempt_notifier *notifier, int cpu);
+ 	void (*sched_out)(struct preempt_notifier *notifier,
+ 			  struct task_struct *next);
+@@ -314,6 +318,9 @@ struct preempt_notifier {
+ void preempt_notifier_dec(void);
+ void preempt_notifier_register(struct preempt_notifier *notifier);
+ void preempt_notifier_unregister(struct preempt_notifier *notifier);
++/* eCS */
++int  preempt_notifier_sched_check(struct task_struct *curr);
++/*******/
+ 
+ static inline void preempt_notifier_init(struct preempt_notifier *notifier,
+ 				     struct preempt_ops *ops)
+diff --git a/include/linux/rcupdate.h b/include/linux/rcupdate.h
+index f816fc7..b89e965 100644
+--- a/include/linux/rcupdate.h
++++ b/include/linux/rcupdate.h
+@@ -1,3 +1,4 @@
++/* SPDX-License-Identifier: GPL-2.0-or-later */
+ /*
+  * Read-Copy Update mechanism for mutual exclusion
+  *
+@@ -43,6 +44,13 @@
+ #include <asm/processor.h>
+ #include <linux/cpumask.h>
+ 
++/* eCS */
++#ifdef CONFIG_PARAVIRT_VCS
++#include <linux/smp.h>
++#include <asm/paravirt.h>
++#endif
++/*******/
++
+ #define ULONG_CMP_GE(a, b)	(ULONG_MAX / 2 >= (a) - (b))
+ #define ULONG_CMP_LT(a, b)	(ULONG_MAX / 2 < (a) - (b))
+ #define ulong2long(a)		(*(long *)(&(a)))
+@@ -605,6 +613,11 @@ static inline void rcu_preempt_sleep_check(void) { }
+ static inline void rcu_read_lock(void)
+ {
+ 	__rcu_read_lock();
++/* eCS */
++#if defined(CONFIG_PARAVIRT_RCU_VCS)
++        vcpu_preempt_count(smp_processor_id(), 1, KVM_RCU_READER);
++#endif
++/*******/
+ 	__acquire(RCU);
+ 	rcu_lock_acquire(&rcu_lock_map);
+ 	RCU_LOCKDEP_WARN(!rcu_is_watching(),
+@@ -661,6 +674,11 @@ static inline void rcu_read_unlock(void)
+ 	RCU_LOCKDEP_WARN(!rcu_is_watching(),
+ 			 "rcu_read_unlock() used illegally while idle");
+ 	__release(RCU);
++/* eCS */
++#if defined(CONFIG_PARAVIRT_RCU_VCS)
++        vcpu_preempt_count(smp_processor_id(), -1, KVM_NO_CS);
++#endif
++/*******/
+ 	__rcu_read_unlock();
+ 	rcu_lock_release(&rcu_lock_map); /* Keep acq info for rls diags. */
+ }
+diff --git a/include/linux/sched.h b/include/linux/sched.h
+index c05ac5f..00baf4c 100644
+--- a/include/linux/sched.h
++++ b/include/linux/sched.h
+@@ -1,3 +1,4 @@
++/* SPDX-License-Identifier: GPL-2.0-only */
+ #ifndef _LINUX_SCHED_H
+ #define _LINUX_SCHED_H
+ 
+@@ -527,6 +528,13 @@ struct task_struct {
+ 	/* -1 unrunnable, 0 runnable, >0 stopped: */
+ 	volatile long			state;
+ 
++/* eCS */
++#ifdef CONFIG_PARAVIRT_VCS
++        volatile long                   vcs_preempt_state;
++        int                             temp_vcs_count;
++#endif
++/*******/
++
+ 	/*
+ 	 * This begins the randomizable portion of task_struct. Only
+ 	 * scheduling-critical items should be added above here.
+@@ -1377,6 +1385,9 @@ static inline int set_cpus_allowed_ptr(struct task_struct *p, const struct cpuma
+ 
+ extern int yield_to(struct task_struct *p, bool preempt);
+ extern void set_user_nice(struct task_struct *p, long nice);
++/* eCS */
++extern void set_user_nice_wlock(struct task_struct *p, long nice);
++/*******/
+ extern int task_prio(const struct task_struct *p);
+ 
+ /**
+@@ -1617,6 +1628,28 @@ static inline void set_task_cpu(struct task_struct *p, unsigned int cpu)
+  */
+ #ifndef vcpu_is_preempted
+ # define vcpu_is_preempted(cpu)	false
++/* eCS */
++#endif
++
++#ifndef vcpu_get_fake_preempt_count
++# define vcpu_get_fake_preempt_count(cpu) 0
++#endif
++
++#ifndef vcpu_preempt_count
++# define vcpu_preempt_count(cpu, update, type) do { } while(0)
++#endif
++
++#ifndef vcpu_fake_preempt_count
++# define vcpu_fake_preempt_count(cpu, update, type) do { } while(0)
++#endif
++
++#ifndef vcpu_update_fake_preempt_count
++#define vcpu_update_fake_preempt_count(cpu, update, type) do { } while(0)
++#endif
++
++#ifndef vcpu_pcpu_is_overloaded
++#define vcpu_pcpu_is_overloaded(cpu) false
++/*******/
+ #endif
+ 
+ extern long sched_setaffinity(pid_t pid, const struct cpumask *new_mask);
+diff --git a/include/linux/sched/stat.h b/include/linux/sched/stat.h
+index 141b74c..1ce4364 100644
+--- a/include/linux/sched/stat.h
++++ b/include/linux/sched/stat.h
+@@ -1,3 +1,4 @@
++/* SPDX-License-Identifier: GPL-2.0-only */
+ #ifndef _LINUX_SCHED_STAT_H
+ #define _LINUX_SCHED_STAT_H
+ 
+@@ -17,6 +18,9 @@
+ extern int nr_processes(void);
+ extern unsigned long nr_running(void);
+ extern bool single_task_running(void);
++/* eCS */
++extern int nr_running_tasks(void);
++/*******/
+ extern unsigned long nr_iowait(void);
+ extern unsigned long nr_iowait_cpu(int cpu);
+ extern void get_iowait_load(unsigned long *nr_waiters, unsigned long *load);
+diff --git a/include/uapi/linux/kvm_para.h b/include/uapi/linux/kvm_para.h
+index fed506a..4f06c8a 100644
+--- a/include/uapi/linux/kvm_para.h
++++ b/include/uapi/linux/kvm_para.h
+@@ -1,3 +1,4 @@
++/* SPDX-License-Identifier: GPL-2.0-only */
+ #ifndef _UAPI__LINUX_KVM_PARA_H
+ #define _UAPI__LINUX_KVM_PARA_H
+ 
+@@ -26,6 +27,23 @@
+ #define KVM_HC_MIPS_CONSOLE_OUTPUT	8
+ #define KVM_HC_CLOCK_PAIRING		9
+ 
++/* eCS */
++#ifdef CONFIG_PARAVIRT_IPI
++#define KVM_HC_IPI_DELIVERY             10
++
++#ifdef CONFIG_PARAVIRT_TLB
++#define KVM_HC_TLB                      11
++#endif
++
++DECLARE_PER_CPU(struct kvm_ipi_cpu_list, ipi_cpu_list);
++
++#endif
++
++#ifdef CONFIG_PARAVIRT_WAIT_HYPERCALL
++#define KVM_HC_WAIT                     12
++#endif
++/*******/
++
+ /*
+  * hypercalls use architecture specific
+  */
+diff --git a/kernel/locking/mutex.c b/kernel/locking/mutex.c
+index 858a075..a22fcb4 100644
+--- a/kernel/locking/mutex.c
++++ b/kernel/locking/mutex.c
+@@ -1,3 +1,4 @@
++// SPDX-License-Identifier: GPL-2.0-only
+ /*
+  * kernel/locking/mutex.c
+  *
+@@ -22,12 +23,18 @@
+ #include <linux/sched/signal.h>
+ #include <linux/sched/rt.h>
+ #include <linux/sched/wake_q.h>
++/* eCS */
++#include <linux/sched/stat.h>
++/*******/
+ #include <linux/sched/debug.h>
+ #include <linux/export.h>
+ #include <linux/spinlock.h>
+ #include <linux/interrupt.h>
+ #include <linux/debug_locks.h>
+ #include <linux/osq_lock.h>
++/* eCS */
++#include <linux/paravirt.h>
++/*******/
+ 
+ #ifdef CONFIG_DEBUG_MUTEXES
+ # include "mutex-debug.h"
+@@ -239,6 +246,9 @@ void __sched mutex_lock(struct mutex *lock)
+ 
+ 	if (!__mutex_trylock_fast(lock))
+ 		__mutex_lock_slowpath(lock);
++/* eCS */
++        inc_mutex_count();
++/*******/
+ }
+ EXPORT_SYMBOL(mutex_lock);
+ #endif
+@@ -440,7 +450,13 @@ bool mutex_spin_on_owner(struct mutex *lock, struct task_struct *owner,
+ 		 * Use vcpu_is_preempted to detect lock holder preemption issue.
+ 		 */
+ 		if (!owner->on_cpu || need_resched() ||
++/* eCS */
++#ifdef CONFIG_PARAVIRT_VCS
++                                vcpu_is_preempted_other(task_cpu(owner))) {
++#else
+ 				vcpu_is_preempted(task_cpu(owner))) {
++#endif
++/*******/
+ 			ret = false;
+ 			break;
+ 		}
+@@ -476,7 +492,9 @@ static inline int mutex_can_spin_on_owner(struct mutex *lock)
+ 	 * on cpu or its cpu is preempted
+ 	 */
+ 	if (owner)
+-		retval = owner->on_cpu && !vcpu_is_preempted(task_cpu(owner));
++/* eCS */
++		retval = owner->on_cpu && !is_vcpu_preempted(task_cpu(owner));
++/*******/
+ 	rcu_read_unlock();
+ 
+ 	/*
+@@ -612,6 +630,9 @@ void __sched mutex_unlock(struct mutex *lock)
+ 		return;
+ #endif
+ 	__mutex_unlock_slowpath(lock, _RET_IP_);
++/* eCS */
++        dec_mutex_count();
++/*******/
+ }
+ EXPORT_SYMBOL(mutex_unlock);
+ 
+@@ -830,6 +851,16 @@ void __sched ww_mutex_unlock(struct ww_mutex *lock)
+ 		}
+ 
+ 		spin_unlock(&lock->wait_lock);
++/* eCS */
++#ifdef CONFIG_PARAVIRT_VCS
++                if (single_task_running() && !vcpu_pcpu_is_overloaded(task_cpu(current))) {
++                        set_current_state(TASK_RUNNING);
++                        if (mutex_optimistic_spin(lock, ww_ctx, use_ww_ctx, &waiter))
++                                break;
++                } else
++                        set_current_state(state);
++#endif
++/*******/
+ 		schedule_preempt_disabled();
+ 
+ 		/*
+@@ -1178,8 +1209,12 @@ int __sched mutex_trylock(struct mutex *lock)
+ {
+ 	bool locked = __mutex_trylock(lock);
+ 
+-	if (locked)
++/* eCS */
++	if (locked) {
++                inc_mutex_count();
+ 		mutex_acquire(&lock->dep_map, 0, 1, _RET_IP_);
++        }
++/*******/
+ 
+ 	return locked;
+ }
+diff --git a/kernel/locking/osq_lock.c b/kernel/locking/osq_lock.c
+index a316794..fb9cdd8 100644
+--- a/kernel/locking/osq_lock.c
++++ b/kernel/locking/osq_lock.c
+@@ -1,6 +1,10 @@
++// SPDX-License-Identifier: GPL-2.0-only
+ #include <linux/percpu.h>
+ #include <linux/sched.h>
+ #include <linux/osq_lock.h>
++/* eCS */
++#include <linux/paravirt.h>
++/*******/
+ 
+ /*
+  * An MCS like lock especially tailored for optimistic spinning for sleeping
+@@ -126,8 +130,10 @@ bool osq_lock(struct optimistic_spin_queue *lock)
+ 		 * Use vcpu_is_preempted() to avoid waiting for a preempted
+ 		 * lock holder:
+ 		 */
+-		if (need_resched() || vcpu_is_preempted(node_cpu(node->prev)))
++/* eCS */
++		if (need_resched() || is_vcpu_preempted(node_cpu(node->prev)))
+ 			goto unqueue;
++/*******/
+ 
+ 		cpu_relax();
+ 	}
+diff --git a/kernel/locking/qspinlock.c b/kernel/locking/qspinlock.c
+index fd24153..187163d 100644
+--- a/kernel/locking/qspinlock.c
++++ b/kernel/locking/qspinlock.c
+@@ -1,3 +1,4 @@
++// SPDX-License-Identifier: GPL-2.0-or-later
+ /*
+  * Queued spinlock
+  *
+@@ -256,6 +257,9 @@ static __always_inline void __pv_kick_node(struct qspinlock *lock,
+ static __always_inline u32  __pv_wait_head_or_lock(struct qspinlock *lock,
+ 						   struct mcs_spinlock *node)
+ 						   { return 0; }
++/* eCS */
++static __always_inline void __pv_update_serving_node(int flag) { }
++/*******/
+ 
+ #define pv_enabled()		false
+ 
+@@ -263,6 +267,9 @@ static __always_inline u32  __pv_wait_head_or_lock(struct qspinlock *lock,
+ #define pv_wait_node		__pv_wait_node
+ #define pv_kick_node		__pv_kick_node
+ #define pv_wait_head_or_lock	__pv_wait_head_or_lock
++/* eCS */
++#define pv_update_serving_node  __pv_update_serving_node
++/*******/
+ 
+ #ifdef CONFIG_PARAVIRT_SPINLOCKS
+ #define queued_spin_lock_slowpath	native_queued_spin_lock_slowpath
+@@ -413,6 +420,9 @@ void queued_spin_lock_slowpath(struct qspinlock *lock, u32 val)
+ 	struct mcs_spinlock *prev, *next, *node;
+ 	u32 new, old, tail;
+ 	int idx;
++/* eCS */
++        int steal_flag = 0;
++/*******/
+ 
+ 	BUILD_BUG_ON(CONFIG_NR_CPUS >= (1U << _Q_TAIL_CPU_BITS));
+ 
+@@ -505,8 +515,12 @@ void queued_spin_lock_slowpath(struct qspinlock *lock, u32 val)
+ 	 * attempt the trylock once more in the hope someone let go while we
+ 	 * weren't watching.
+ 	 */
+-	if (queued_spin_trylock(lock))
++/* eCS */
++	if (queued_spin_trylock(lock, 0)) {
++                steal_flag = 1;
+ 		goto release;
++        }
++/*******/
+ 
+ 	/*
+ 	 * We have already touched the queueing cacheline; don't bother with
+@@ -620,6 +634,9 @@ void queued_spin_lock_slowpath(struct qspinlock *lock, u32 val)
+ 	/*
+ 	 * release the node
+ 	 */
++/* eCS */
++        pv_update_serving_node(steal_flag);
++/*******/
+ 	__this_cpu_dec(mcs_nodes[0].count);
+ }
+ EXPORT_SYMBOL(queued_spin_lock_slowpath);
+@@ -637,6 +654,9 @@ void queued_spin_lock_slowpath(struct qspinlock *lock, u32 val)
+ #undef pv_wait_node
+ #undef pv_kick_node
+ #undef pv_wait_head_or_lock
++/* eCS */
++#undef pv_update_serving_node
++/*******/
+ 
+ #undef  queued_spin_lock_slowpath
+ #define queued_spin_lock_slowpath	__pv_queued_spin_lock_slowpath
+diff --git a/kernel/locking/qspinlock_paravirt.h b/kernel/locking/qspinlock_paravirt.h
+index 4ccfcaa..cbde7bb 100644
+--- a/kernel/locking/qspinlock_paravirt.h
++++ b/kernel/locking/qspinlock_paravirt.h
+@@ -1,3 +1,4 @@
++/* SPDX-License-Identifier: GPL-2.0-only */
+ #ifndef _GEN_PV_LOCK_SLOWPATH
+ #error "do not include this file"
+ #endif
+@@ -59,6 +60,37 @@ struct pv_node {
+  */
+ #include "qspinlock_stat.h"
+ 
++/* eCS */
++#ifdef CONFIG_QUEUED_NUMA_LOCK_STEAL
++#define MAX_NUMA_STEAL_THRESHOLD        32
++
++static int node_steal_count[MAX_NUMNODES] ____cacheline_aligned_in_smp;
++static int serving_node_id ____cacheline_aligned_in_smp;
++
++static __always_inline int pv_same_numa_node(int node_id)
++{
++        if (READ_ONCE(node_steal_count[node_id]) + 1 <
++                                        MAX_NUMA_STEAL_THRESHOLD &&
++                node_id == READ_ONCE(serving_node_id))
++                return 1;
++        return 0;
++}
++
++static __always_inline void pv_update_serving_node(int flag)
++{
++        if (!flag) {
++                WRITE_ONCE(node_steal_count[serving_node_id], 0);
++                WRITE_ONCE(serving_node_id, numa_node_id());
++        }
++}
++
++#else
++
++#define pv_update_serving_node(flag) do { } while (0)
++
++#endif
++/*******/
++
+ /*
+  * By replacing the regular queued_spin_trylock() with the function below,
+  * it will be called once when a lock waiter enter the PV slowpath before
+@@ -66,19 +98,43 @@ struct pv_node {
+  * bit is off, it helps to reduce the performance impact of lock waiter
+  * preemption without the drawback of lock starvation.
+  */
+-#define queued_spin_trylock(l)	pv_queued_spin_steal_lock(l)
+-static inline bool pv_queued_spin_steal_lock(struct qspinlock *lock)
++/* eCS */
++#define queued_spin_trylock(l, f)	pv_queued_spin_steal_lock(l, f)
++static inline bool pv_queued_spin_steal_lock(struct qspinlock *lock,
++                                             int flag)
+ {
+ 	struct __qspinlock *l = (void *)lock;
+ 
++#ifndef CONFIG_QUEUED_NUMA_LOCK_STEAL
+ 	if (!(atomic_read(&lock->val) & _Q_LOCKED_PENDING_MASK) &&
+ 	    (cmpxchg(&l->locked, 0, _Q_LOCKED_VAL) == 0)) {
+ 		qstat_inc(qstat_pv_lock_stealing, true);
++#ifdef CONFIG_PARAVIRT_SPINLOCK_VCS
++                if (flag)
++                        vcpu_preempt_count(this_cpu_read(cpu_number), 1,
++                                           KVM_SPN_HOLDER);
++#endif
+ 		return true;
+ 	}
++#else
++        int node_id = numa_node_id();
+ 
++        if (!(atomic_read(&lock->val) & _Q_LOCKED_PENDING_MASK) &&
++            pv_same_numa_node(node_id) &&
++	    (cmpxchg(&l->locked, 0, _Q_LOCKED_VAL) == 0)) {
++		qstat_inc(qstat_pv_lock_stealing, true);
++#ifdef CONFIG_PARAVIRT_SPINLOCK_VCS
++                if (flag)
++                        vcpu_preempt_count(this_cpu_read(cpu_number), 1,
++                                           KVM_SPN_HOLDER);
++#endif
++                ++node_steal_count[node_id];
++		return true;
++	}
++#endif
+ 	return false;
+ }
++/*******/
+ 
+ /*
+  * The pending bit is used by the queue head vCPU to indicate that it
+diff --git a/kernel/locking/rwsem-xadd.c b/kernel/locking/rwsem-xadd.c
+index 34e727f..4f4b025 100644
+--- a/kernel/locking/rwsem-xadd.c
++++ b/kernel/locking/rwsem-xadd.c
+@@ -1,3 +1,4 @@
++// SPDX-License-Identifier: GPL-2.0-only
+ /* rwsem.c: R/W semaphores: contention handling functions
+  *
+  * Written by David Howells (dhowells@redhat.com).
+@@ -15,8 +16,14 @@
+ #include <linux/sched/signal.h>
+ #include <linux/sched/rt.h>
+ #include <linux/sched/wake_q.h>
++/* eCS */
++#include <linux/sched/stat.h>
++/*******/
+ #include <linux/sched/debug.h>
+ #include <linux/osq_lock.h>
++/* eCS */
++#include <linux/paravirt.h>
++/*******/
+ 
+ #include "rwsem.h"
+ 
+@@ -341,7 +348,9 @@ static inline bool rwsem_can_spin_on_owner(struct rw_semaphore *sem)
+ 	 * As lock holder preemption issue, we both skip spinning if task is not
+ 	 * on cpu or its cpu is preempted
+ 	 */
+-	ret = owner->on_cpu && !vcpu_is_preempted(task_cpu(owner));
++/* eCS */
++	ret = owner->on_cpu && !is_vcpu_preempted(task_cpu(owner));
++/*******/
+ done:
+ 	rcu_read_unlock();
+ 	return ret;
+@@ -371,11 +380,13 @@ static noinline bool rwsem_spin_on_owner(struct rw_semaphore *sem)
+ 		 * abort spinning when need_resched or owner is not running or
+ 		 * owner's cpu is preempted.
+ 		 */
++/* eCS */
+ 		if (!owner->on_cpu || need_resched() ||
+-				vcpu_is_preempted(task_cpu(owner))) {
++				is_vcpu_preempted(task_cpu(owner))) {
+ 			rcu_read_unlock();
+ 			return false;
+ 		}
++/*******/
+ 
+ 		cpu_relax();
+ 	}
+@@ -535,8 +546,23 @@ static inline bool rwsem_has_spinner(struct rw_semaphore *sem)
+ 			if (signal_pending_state(state, current))
+ 				goto out_nolock;
+ 
+-			schedule();
+-			set_current_state(state);
++/* eCS */
++#ifdef CONFIG_PARAVIRT_VCS
++                        if (!vcpu_pcpu_is_overloaded(task_cpu(current)) &&
++                            single_task_running()) {
++                                __set_current_state(TASK_RUNNING);
++                                if (need_resched())
++                                        schedule();
++                        } else {
++                                set_current_state(state);
++                                schedule();
++                                set_current_state(state);
++                        }
++#else
++                        schedule();
++                        set_current_state(state);
++#endif
++/*******/
+ 		} while ((count = atomic_long_read(&sem->count)) & RWSEM_ACTIVE_MASK);
+ 
+ 		raw_spin_lock_irq(&sem->wait_lock);
+diff --git a/kernel/locking/rwsem.c b/kernel/locking/rwsem.c
+index 4d48b1c..b31fe5d 100644
+--- a/kernel/locking/rwsem.c
++++ b/kernel/locking/rwsem.c
+@@ -1,3 +1,4 @@
++// SPDX-License-Identifier: GPL-2.0-only
+ /* kernel/rwsem.c: R/W semaphores, public implementation
+  *
+  * Written by David Howells (dhowells@redhat.com).
+@@ -11,6 +12,9 @@
+ #include <linux/export.h>
+ #include <linux/rwsem.h>
+ #include <linux/atomic.h>
++/* eCS */
++#include <linux/paravirt.h>
++/*******/
+ 
+ #include "rwsem.h"
+ 
+@@ -24,6 +28,9 @@ void __sched down_read(struct rw_semaphore *sem)
+ 
+ 	LOCK_CONTENDED(sem, __down_read_trylock, __down_read);
+ 	rwsem_set_reader_owned(sem);
++/* eCS */
++        inc_rwsem_rd_count();
++/*******/
+ }
+ 
+ EXPORT_SYMBOL(down_read);
+@@ -38,6 +45,9 @@ int down_read_trylock(struct rw_semaphore *sem)
+ 	if (ret == 1) {
+ 		rwsem_acquire_read(&sem->dep_map, 0, 1, _RET_IP_);
+ 		rwsem_set_reader_owned(sem);
++/* eCS */
++                inc_rwsem_rd_count();
++/*******/
+ 	}
+ 	return ret;
+ }
+@@ -54,6 +64,9 @@ void __sched down_write(struct rw_semaphore *sem)
+ 
+ 	LOCK_CONTENDED(sem, __down_write_trylock, __down_write);
+ 	rwsem_set_owner(sem);
++/* eCS */
++        inc_rwsem_wr_count();
++/*******/
+ }
+ 
+ EXPORT_SYMBOL(down_write);
+@@ -72,6 +85,9 @@ int __sched down_write_killable(struct rw_semaphore *sem)
+ 	}
+ 
+ 	rwsem_set_owner(sem);
++/* eCS */
++        inc_rwsem_wr_count();
++/*******/
+ 	return 0;
+ }
+ 
+@@ -87,6 +103,9 @@ int down_write_trylock(struct rw_semaphore *sem)
+ 	if (ret == 1) {
+ 		rwsem_acquire(&sem->dep_map, 0, 1, _RET_IP_);
+ 		rwsem_set_owner(sem);
++/* eCS */
++                inc_rwsem_wr_count();
++/*******/
+ 	}
+ 
+ 	return ret;
+@@ -102,6 +121,9 @@ void up_read(struct rw_semaphore *sem)
+ 	rwsem_release(&sem->dep_map, 1, _RET_IP_);
+ 
+ 	__up_read(sem);
++/* eCS */
++        dec_rwsem_rd_count();
++/*******/
+ }
+ 
+ EXPORT_SYMBOL(up_read);
+@@ -115,6 +137,9 @@ void up_write(struct rw_semaphore *sem)
+ 
+ 	rwsem_clear_owner(sem);
+ 	__up_write(sem);
++/* eCS */
++        dec_rwsem_wr_count();
++/*******/
+ }
+ 
+ EXPORT_SYMBOL(up_write);
+@@ -128,6 +153,10 @@ void downgrade_write(struct rw_semaphore *sem)
+ 
+ 	rwsem_set_reader_owned(sem);
+ 	__downgrade_write(sem);
++/* eCS */
++        dec_rwsem_wr_count();
++        inc_rwsem_rd_count();
++/*******/
+ }
+ 
+ EXPORT_SYMBOL(downgrade_write);
+diff --git a/kernel/sched/core.c b/kernel/sched/core.c
+index 0869b20..9caaaf7 100644
+--- a/kernel/sched/core.c
++++ b/kernel/sched/core.c
+@@ -1,3 +1,4 @@
++// SPDX-License-Identifier: GPL-2.0-only
+ /*
+  *  kernel/sched/core.c
+  *
+@@ -27,6 +28,10 @@
+ #include <linux/security.h>
+ #include <linux/syscalls.h>
+ 
++/* eCS */
++#include <linux/paravirt.h>
++/*******/
++
+ #include <asm/switch_to.h>
+ #include <asm/tlb.h>
+ #ifdef CONFIG_PARAVIRT
+@@ -188,6 +193,7 @@ static void update_rq_clock_task(struct rq *rq, s64 delta)
+ 	rq->prev_irq_time += irq_delta;
+ 	delta -= irq_delta;
+ #endif
++#if 0 /* eCS */
+ #ifdef CONFIG_PARAVIRT_TIME_ACCOUNTING
+ 	if (static_key_false((&paravirt_steal_rq_enabled))) {
+ 		steal = paravirt_steal_clock(cpu_of(rq));
+@@ -200,6 +206,7 @@ static void update_rq_clock_task(struct rq *rq, s64 delta)
+ 		delta -= steal;
+ 	}
+ #endif
++#endif
+ 
+ 	rq->clock_task += delta;
+ 
+@@ -2531,6 +2538,19 @@ static __always_inline void fire_sched_in_preempt_notifiers(struct task_struct *
+ 		notifier->ops->sched_out(notifier, next);
+ }
+ 
++/* eCS */
++static int
++__fire_sched_check_preempt_notifiers(struct task_struct *curr)
++{
++        struct preempt_notifier *notifier;
++
++        hlist_for_each_entry(notifier, &curr->preempt_notifiers, link)
++                return notifier->ops->sched_check(notifier);
++
++        return 0;
++}
++/*******/
++
+ static __always_inline void
+ fire_sched_out_preempt_notifiers(struct task_struct *curr,
+ 				 struct task_struct *next)
+@@ -2539,6 +2559,24 @@ static __always_inline void fire_sched_in_preempt_notifiers(struct task_struct *
+ 		__fire_sched_out_preempt_notifiers(curr, next);
+ }
+ 
++/* eCS */
++static __always_inline int
++fire_sched_check_preempt_notifiers(struct task_struct *curr)
++{
++        if (static_key_false(&preempt_notifier_key))
++                return __fire_sched_check_preempt_notifiers(curr);
++
++        return 0;
++}
++
++inline __always_inline int
++preempt_notifier_sched_check(struct task_struct *curr)
++{
++        return fire_sched_check_preempt_notifiers(curr);
++}
++EXPORT_SYMBOL_GPL(preempt_notifier_sched_check);
++/*******/
++
+ #else /* !CONFIG_PREEMPT_NOTIFIERS */
+ 
+ static inline void fire_sched_in_preempt_notifiers(struct task_struct *curr)
+@@ -2551,6 +2589,21 @@ static inline void fire_sched_in_preempt_notifiers(struct task_struct *curr)
+ {
+ }
+ 
++/* eCS */
++static inline int
++fire_sched_check_preempt_notifiers(struct task_struct *curr)
++{
++        return 0;
++}
++
++inline __always_inline int
++preempt_notifier_sched_check(struct task_struct *curr)
++{
++        return 0;
++}
++EXPORT_SYMBOL_GPL(preempt_notifier_sched_check);
++/*******/
++
+ #endif /* CONFIG_PREEMPT_NOTIFIERS */
+ 
+ /**
+@@ -2809,6 +2862,14 @@ bool single_task_running(void)
+ }
+ EXPORT_SYMBOL(single_task_running);
+ 
++/* eCS */
++int nr_running_tasks(void)
++{
++        return raw_rq()->nr_running;
++}
++EXPORT_PER_CPU_SYMBOL(nr_running_tasks);
++/*******/
++
+ unsigned long long nr_context_switches(void)
+ {
+ 	int i;
+@@ -3329,7 +3390,12 @@ static void __sched notrace __schedule(bool preempt)
+ 		trace_sched_switch(preempt, prev, next);
+ 
+ 		/* Also unlocks the rq: */
++/* eCS */
++                dec_if_vcs_preempt_count(prev);
+ 		rq = context_switch(rq, prev, next, &rf);
++                inc_if_vcs_preempt_count(next);
++/*******/
++
+ 	} else {
+ 		rq->clock_update_flags &= ~(RQCF_ACT_SKIP|RQCF_REQ_SKIP);
+ 		rq_unlock_irq(rq, &rf);
+diff --git a/kernel/sched/fair.c b/kernel/sched/fair.c
+index c95880e..0d2646c 100644
+--- a/kernel/sched/fair.c
++++ b/kernel/sched/fair.c
+@@ -1,3 +1,4 @@
++// SPDX-License-Identifier: GPL-2.0-only
+ /*
+  * Completely Fair Scheduling (CFS) Class (SCHED_NORMAL/SCHED_BATCH)
+  *
+@@ -3818,16 +3819,21 @@ static void clear_buddies(struct cfs_rq *cfs_rq, struct sched_entity *se)
+ /*
+  * Preempt the current task with a newly woken task if needed:
+  */
++/* eCS */
+ static void
+-check_preempt_tick(struct cfs_rq *cfs_rq, struct sched_entity *curr)
++check_preempt_tick(struct cfs_rq *cfs_rq, struct sched_entity *curr,
++                   struct task_struct *curr_task)
+ {
+ 	unsigned long ideal_runtime, delta_exec;
+ 	struct sched_entity *se;
+ 	s64 delta;
++        int flag;
++
++        flag = preempt_notifier_sched_check(curr_task);
+ 
+ 	ideal_runtime = sched_slice(cfs_rq, curr);
+ 	delta_exec = curr->sum_exec_runtime - curr->prev_sum_exec_runtime;
+-	if (delta_exec > ideal_runtime) {
++	if (delta_exec > ideal_runtime && !flag) {
+ 		resched_curr(rq_of(cfs_rq));
+ 		/*
+ 		 * The current task ran long enough, ensure it doesn't get
+@@ -3851,9 +3857,10 @@ static void clear_buddies(struct cfs_rq *cfs_rq, struct sched_entity *se)
+ 	if (delta < 0)
+ 		return;
+ 
+-	if (delta > ideal_runtime)
++	if (delta > ideal_runtime && !flag)
+ 		resched_curr(rq_of(cfs_rq));
+ }
++/*******/
+ 
+ static void
+ set_next_entity(struct cfs_rq *cfs_rq, struct sched_entity *se)
+@@ -3974,8 +3981,10 @@ static void put_prev_entity(struct cfs_rq *cfs_rq, struct sched_entity *prev)
+ 	cfs_rq->curr = NULL;
+ }
+ 
++/* eCS */
+ static void
+-entity_tick(struct cfs_rq *cfs_rq, struct sched_entity *curr, int queued)
++entity_tick(struct cfs_rq *cfs_rq, struct sched_entity *curr,
++            struct task_struct *curr_task, int queued)
+ {
+ 	/*
+ 	 * Update run-time statistics of the 'current'.
+@@ -4006,8 +4015,9 @@ static void put_prev_entity(struct cfs_rq *cfs_rq, struct sched_entity *prev)
+ #endif
+ 
+ 	if (cfs_rq->nr_running > 1)
+-		check_preempt_tick(cfs_rq, curr);
++		check_preempt_tick(cfs_rq, curr, curr_task);
+ }
++/*******/
+ 
+ 
+ /**************************************************
+@@ -8954,7 +8964,9 @@ static void task_tick_fair(struct rq *rq, struct task_struct *curr, int queued)
+ 
+ 	for_each_sched_entity(se) {
+ 		cfs_rq = cfs_rq_of(se);
+-		entity_tick(cfs_rq, se, queued);
++/* eCS */
++		entity_tick(cfs_rq, se, curr, queued);
++/*******/
+ 	}
+ 
+ 	if (static_branch_unlikely(&sched_numa_balancing))
+diff --git a/kernel/smp.c b/kernel/smp.c
+index 3061483..6899ee4 100644
+--- a/kernel/smp.c
++++ b/kernel/smp.c
+@@ -1,3 +1,4 @@
++// SPDX-License-Identifier: GPL-2.0-only
+ /*
+  * Generic helpers for smp ipi calls
+  *
+@@ -19,6 +20,9 @@
+ #include <linux/sched.h>
+ #include <linux/sched/idle.h>
+ #include <linux/hypervisor.h>
++/* eCS */
++#include <linux/paravirt.h>
++/*******/
+ 
+ #include "smpboot.h"
+ 
+@@ -455,8 +459,11 @@ void smp_call_function_many(const struct cpumask *mask,
+ 			__cpumask_set_cpu(cpu, cfd->cpumask_ipi);
+ 	}
+ 
++/* eCS */
+ 	/* Send a message to all CPUs in the map */
+-	arch_send_call_function_ipi_mask(cfd->cpumask_ipi);
++        send_call_function_ipi_mask(cfd->cpumask_ipi);
++        update_ipi_cpumask(cfd->cpumask);
++/*******/
+ 
+ 	if (wait) {
+ 		for_each_cpu(cpu, cfd->cpumask) {
+diff --git a/kernel/softirq.c b/kernel/softirq.c
+index 4e09821..e08d1a0 100644
+--- a/kernel/softirq.c
++++ b/kernel/softirq.c
+@@ -1,3 +1,4 @@
++// SPDX-License-Identifier: GPL-2.0-only
+ /*
+  *	linux/kernel/softirq.c
+  *
+@@ -27,6 +28,12 @@
+ #include <linux/tick.h>
+ #include <linux/irq.h>
+ 
++/* eCS */
++#ifdef CONFIG_PARAVIRT_VCS
++#include <asm/paravirt.h>
++#endif
++/*******/
++
+ #define CREATE_TRACE_POINTS
+ #include <trace/events/irq.h>
+ 
+@@ -248,6 +255,11 @@ asmlinkage __visible void __softirq_entry __do_softirq(void)
+ 	__u32 pending;
+ 	int softirq_bit;
+ 
++/* eCS */
++#ifdef CONFIG_PARAVIRT_INTR_CTX_VCS
++        pv_vcpu_preempt_count(smp_processor_id(), 1, KVM_INTR_CNTXT);
++#endif
++/*******/
+ 	/*
+ 	 * Mask out PF_MEMALLOC s current task context is borrowed for the
+ 	 * softirq. A softirq handled such as network RX might set PF_MEMALLOC
+@@ -309,6 +321,11 @@ asmlinkage __visible void __softirq_entry __do_softirq(void)
+ 	account_irq_exit_time(current);
+ 	__local_bh_enable(SOFTIRQ_OFFSET);
+ 	WARN_ON_ONCE(in_interrupt());
++/* eCS */
++#ifdef CONFIG_PARAVIRT_INTR_CTX_VCS
++        pv_vcpu_preempt_count(smp_processor_id(), -1, KVM_INTR_CNTXT);
++#endif
++/*******/
+ 	current_restore_flags(old_flags, PF_MEMALLOC);
+ }
+ 
+@@ -317,6 +334,11 @@ asmlinkage __visible void do_softirq(void)
+ 	__u32 pending;
+ 	unsigned long flags;
+ 
++/* eCS */
++#ifdef CONFIG_PARAVIRT_INTR_CTX_VCS
++        pv_vcpu_preempt_count(smp_processor_id(), 1, KVM_INTR_CNTXT);
++#endif
++/*******/
+ 	if (in_interrupt())
+ 		return;
+ 
+@@ -328,6 +350,12 @@ asmlinkage __visible void do_softirq(void)
+ 		do_softirq_own_stack();
+ 
+ 	local_irq_restore(flags);
++
++/* eCS */
++#ifdef CONFIG_PARAVIRT_INTR_CTX_VCS
++        pv_vcpu_preempt_count(smp_processor_id(), -1, KVM_INTR_CNTXT);
++#endif
++/*******/
+ }
+ 
+ /*
+@@ -335,6 +363,11 @@ asmlinkage __visible void do_softirq(void)
+  */
+ void irq_enter(void)
+ {
++/* eCS */
++#ifdef CONFIG_PARAVIRT_INTR_CTX_VCS
++        pv_vcpu_preempt_count(smp_processor_id(), 1, KVM_INTR_CNTXT);
++#endif
++/*******/
+ 	rcu_irq_enter();
+ 	if (is_idle_task(current) && !in_interrupt()) {
+ 		/*
+@@ -407,6 +440,11 @@ void irq_exit(void)
+ 	tick_irq_exit();
+ 	rcu_irq_exit();
+ 	trace_hardirq_exit(); /* must be last! */
++/* eCS */
++#ifdef CONFIG_PARAVIRT_INTR_CTX_VCS
++        pv_vcpu_preempt_count(smp_processor_id(), -1, KVM_INTR_CNTXT);
++#endif
++/*******/
+ }
+ 
+ /*
+diff --git a/virt/kvm/kvm_main.c b/virt/kvm/kvm_main.c
+index 4d81f6d..1db24fe 100644
+--- a/virt/kvm/kvm_main.c
++++ b/virt/kvm/kvm_main.c
+@@ -1,3 +1,4 @@
++// SPDX-License-Identifier: GPL-2.0-only
+ /*
+  * Kernel-based Virtual Machine driver for Linux
+  *
+@@ -51,6 +52,9 @@
+ #include <linux/slab.h>
+ #include <linux/sort.h>
+ #include <linux/bsearch.h>
++/* eCS */
++#include <linux/kthread.h>
++/*******/
+ 
+ #include <asm/processor.h>
+ #include <asm/io.h>
+@@ -125,6 +129,17 @@ static long kvm_vcpu_compat_ioctl(struct file *file, unsigned int ioctl,
+ static void kvm_release_pfn_dirty(kvm_pfn_t pfn);
+ static void mark_page_dirty_in_slot(struct kvm_memory_slot *memslot, gfn_t gfn);
+ 
++/* eCS */
++/* Round robin passing of the token for scheduler boosting */
++/* static int kvm_vm_id = 0; */
++/* static int kvm_curr_serving_vm_id = 1; */
++/* static struct task_struct *kvm_sched_task; */
++/* static atomic_t kvm_deinit = ATOMIC64_INIT(0); */
++
++static long kvm_sched_timeout = 1 * HZ;
++module_param(kvm_sched_timeout, long, S_IRUGO | S_IWUSR);
++/*******/
++
+ __visible bool kvm_rebooting;
+ EXPORT_SYMBOL_GPL(kvm_rebooting);
+ 
+@@ -274,6 +289,11 @@ int kvm_vcpu_init(struct kvm_vcpu *vcpu, struct kvm *kvm, unsigned id)
+ 	vcpu->kvm = kvm;
+ 	vcpu->vcpu_id = id;
+ 	vcpu->pid = NULL;
++/* eCS */
++        vcpu->cs_version = 0;
++        vcpu->num_extra_schedules = 0;
++        vcpu->extra_time = 0;
++/*******/
+ 	init_swait_queue_head(&vcpu->wq);
+ 	kvm_async_pf_vcpu_init(vcpu);
+ 
+@@ -289,7 +309,12 @@ int kvm_vcpu_init(struct kvm_vcpu *vcpu, struct kvm *kvm, unsigned id)
+ 
+ 	kvm_vcpu_set_in_spin_loop(vcpu, false);
+ 	kvm_vcpu_set_dy_eligible(vcpu, false);
+-	vcpu->preempted = false;
++/* eCS */
++	smp_store_release(&vcpu->preempted, false);
++#if defined(CONFIG_PARAVIRT_IPI) || defined(CONFIG_PARAVIRT_VCS)
++        atomic64_set(&vcpu->sched_count, 0);
++#endif
++/*******/
+ 
+ 	r = kvm_arch_vcpu_init(vcpu);
+ 	if (r < 0)
+@@ -660,10 +685,14 @@ static struct kvm *kvm_create_vm(unsigned long type)
+ 		goto out_err;
+ 
+ 	spin_lock(&kvm_lock);
++        /* kvm->vm_id = ++kvm_vm_id; */
+ 	list_add(&kvm->vm_list, &vm_list);
+ 	spin_unlock(&kvm_lock);
+ 
+ 	preempt_notifier_inc();
++/* eCS */
++        kvm->should_boost = false;
++/*******/
+ 
+ 	return kvm;
+ 
+@@ -708,6 +737,7 @@ static void kvm_destroy_vm(struct kvm *kvm)
+ 	kvm_arch_sync_events(kvm);
+ 	spin_lock(&kvm_lock);
+ 	list_del(&kvm->vm_list);
++        /* --kvm_vm_id; */
+ 	spin_unlock(&kvm_lock);
+ 	kvm_free_irq_routing(kvm);
+ 	for (i = 0; i < KVM_NR_BUSES; i++) {
+@@ -2275,6 +2305,19 @@ static bool kvm_vcpu_eligible_for_directed_yield(struct kvm_vcpu *vcpu)
+ #endif
+ }
+ 
++/* eCS */
++#ifdef CONFIG_PARAVIRT_VCS
++static inline int kvm_vcpu_vcs_check(struct kvm_vcpu *vcpu)
++{
++        struct kvm_steal_time *st = &vcpu->arch.st.steal;
++
++        return ACCESS_ONCE(st->preempt_count) > 0 ||
++                ACCESS_ONCE(st->fake_preempt_count) > 0;
++}
++
++#endif
++/*******/
++
+ void kvm_vcpu_on_spin(struct kvm_vcpu *me)
+ {
+ 	struct kvm *kvm = me->kvm;
+@@ -2293,6 +2336,27 @@ void kvm_vcpu_on_spin(struct kvm_vcpu *me)
+ 	 * VCPU is holding the lock that we need and will release it.
+ 	 * We approximate round-robin by starting at the last boosted VCPU.
+ 	 */
++/* eCS */
++#ifdef CONFIG_PARAVIRT_VCS
++        kvm_for_each_vcpu(i, vcpu, kvm) {
++                if (vcpu == me)
++                        continue;
++                if (!ACCESS_ONCE(vcpu->preempted))
++                        continue;
++                if (swait_active(&vcpu->wq) && !kvm_arch_vcpu_runnable(vcpu))
++                        continue;
++                if (!kvm_vcpu_vcs_check(vcpu))
++                        continue;
++                yielded = kvm_vcpu_yield_to(vcpu);
++                if (yielded > 0) {
++                        kvm->last_boosted_vcpu = i;
++                        break;
++                }
++        }
++        if (!(yielded > 0))
++                yielded = 0;
++#endif
++/*******/
+ 	for (pass = 0; pass < 2 && !yielded && try; pass++) {
+ 		kvm_for_each_vcpu(i, vcpu, kvm) {
+ 			if (!pass && i <= last_boosted_vcpu) {
+@@ -3940,8 +4004,14 @@ static void kvm_sched_in(struct preempt_notifier *pn, int cpu)
+ {
+ 	struct kvm_vcpu *vcpu = preempt_notifier_to_vcpu(pn);
+ 
+-	if (vcpu->preempted)
+-		vcpu->preempted = false;
++/* eCS */
++	if (vcpu->preempted) {
++		smp_store_release(&vcpu->preempted, false);
++#if defined(CONFIG_PARAVIRT_IPI) || defined(CONFIG_PARAVIRT_VCS)
++                atomic64_inc(&vcpu->sched_count);
++#endif
++        }
++/*******/
+ 
+ 	kvm_arch_sched_in(vcpu, cpu);
+ 
+@@ -3953,11 +4023,100 @@ static void kvm_sched_out(struct preempt_notifier *pn,
+ {
+ 	struct kvm_vcpu *vcpu = preempt_notifier_to_vcpu(pn);
+ 
+-	if (current->state == TASK_RUNNING)
+-		vcpu->preempted = true;
++/* eCS */
++	if (current->state == TASK_RUNNING) {
++                /*
++                 * Check if there are any schedules required, if Yes, then
++                 * increase the priority or switch back to the normal schedule.
++                 */
++                /* if (!kvm_arch_check_and_update_schedule(vcpu)) */
++                /*         goto out; */
++#if defined(CONFIG_PARAVIRT_IPI) || defined(CONFIG_PARAVIRT_VCS)
++                atomic64_inc(&vcpu->sched_count);
++#endif
++                smp_store_release(&vcpu->preempted, true);
++                //kvm_vcpu_update_vcs_stat(vcpu);
++        } else {
++                /*
++                 * There is a possibility that the vCPU might have been
++                 * scheduled out by blocking synhcrhonization primitives. In
++                 * this case, we need to downgrade the vCPU's
++                 * num_extra_schedules to 0 to maintain some sort of fairness
++                 */
++#if 0
++                if (smp_load_acquire(&vcpu->cs_version) % 2 &&
++                    vcpu->num_extra_schedules > 0) {
++                        --vcpu->num_extra_schedules;
++                        /* printk(KERN_CRIT "%s: vcpu (%d): now, num_scheules is :%Lu\n", */
++                        /*        __func__, vcpu->vcpu_id, vcpu->num_extra_schedules); */
++                        if (vcpu->nice_value != 0) {
++                                /* printk(KERN_CRIT "%s: vcpu (%d): decreasing the nice from %d to %d, num_sched: %Lu\n", */
++                                /*        __func__, vcpu->vcpu_id, vcpu->nice_value, 0, vcpu->num_extra_schedules); */
++                                vcpu->nice_value = 0;
++                                ++vcpu->cs_version;
++                                set_user_nice_wlock(current, 0);
++                        }
++                }
++#endif
++        }
++     /* out: */
++/*******/
+ 	kvm_arch_vcpu_put(vcpu);
+ }
+ 
++/* eCS */
++static int kvm_sched_check(struct preempt_notifier *pn)
++{
++        struct kvm_vcpu *vcpu = preempt_notifier_to_vcpu(pn);
++
++        return (current->state == TASK_RUNNING &&
++                kvm_arch_check_schedule(vcpu));
++}
++
++/* static void kvm_pass_token(void) */
++/* { */
++/*         struct kvm *prev = NULL, *curr = NULL, *kvm; */
++/*         int prev_vm_id = 0; */
++
++/*         if (list_empty(&vm_list)) */
++/*                 return; */
++
++/*         spin_lock(&kvm_lock); */
++
++/*         prev_vm_id = kvm_curr_serving_vm_id; */
++/*         if (kvm_curr_serving_vm_id + 1 > kvm_vm_id) { */
++/*                 kvm_curr_serving_vm_id = 1; */
++/*         } else { */
++/*                 ++kvm_curr_serving_vm_id; */
++/*         } */
++
++/*         list_for_each_entry(kvm, &vm_list, vm_list) { */
++/*                 if (prev_vm_id == kvm->vm_id) */
++/*                         prev = kvm; */
++/*                 if (kvm_curr_serving_vm_id == kvm->vm_id) */
++/*                         curr = kvm; */
++/*         } */
++/*         if (prev && curr && prev != curr) { */
++/*                 prev->should_boost = false; */
++/*                 curr->should_boost = true; */
++/*         } */
++/*         spin_unlock(&kvm_lock); */
++/*         return; */
++/* } */
++
++/* static int kvm_schedule_token_func(void *__unused) */
++/* { */
++/*         while (!kthread_should_stop() || */
++/*                atomic_read(&kvm_deinit) == 0) { */
++/*                 kvm_pass_token(); */
++/*                 schedule_timeout_interruptible(kvm_sched_timeout); */
++/*                 cpu_relax(); */
++/*         } */
++/*         atomic_set(&kvm_deinit, 2); */
++/*         return 0; */
++/* } */
++/*******/
++
+ int kvm_init(void *opaque, unsigned vcpu_size, unsigned vcpu_align,
+ 		  struct module *module)
+ {
+@@ -4030,6 +4189,9 @@ int kvm_init(void *opaque, unsigned vcpu_size, unsigned vcpu_align,
+ 
+ 	kvm_preempt_ops.sched_in = kvm_sched_in;
+ 	kvm_preempt_ops.sched_out = kvm_sched_out;
++/* eCS */
++        kvm_preempt_ops.sched_check = kvm_sched_check;
++/*******/
+ 
+ 	r = kvm_init_debug();
+ 	if (r) {
+@@ -4037,6 +4199,16 @@ int kvm_init(void *opaque, unsigned vcpu_size, unsigned vcpu_align,
+ 		goto out_undebugfs;
+ 	}
+ 
++/* eCS */
++        /* kvm_sched_task = kthread_create(kvm_schedule_token_func, NULL, */
++        /*                                 "KVM Schedule token function"); */
++        /* if (IS_ERR(kvm_sched_task)) { */
++        /*         printk(KERN_ERR "KVM schedule task creation failed\n"); */
++        /*         goto out_undebugfs; */
++        /* } */
++        /* wake_up_process(kvm_sched_task); */
++/*******/
++
+ 	r = kvm_vfio_ops_init();
+ 	WARN_ON(r);
+ 
+@@ -4068,6 +4240,12 @@ int kvm_init(void *opaque, unsigned vcpu_size, unsigned vcpu_align,
+ 
+ void kvm_exit(void)
+ {
++/* eCS */
++        /* atomic_set(&kvm_deinit, 1); */
++        /* while (atomic_read(&kvm_deinit) != 2) */
++                /* smp_rmb(); */
++/*******/
++
+ 	debugfs_remove_recursive(kvm_debugfs_dir);
+ 	misc_deregister(&kvm_dev);
+ 	kmem_cache_destroy(kvm_vcpu_cache);

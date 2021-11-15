@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: GPL-2.0-or-later */
 #ifndef BOOT_COMPRESSED_MISC_H
 #define BOOT_COMPRESSED_MISC_H
 
@@ -9,11 +10,13 @@
  */
 #undef CONFIG_PARAVIRT
 #undef CONFIG_PARAVIRT_SPINLOCKS
+/* eCS */
 #undef CONFIG_PARAVIRT_VCS
 #undef CONFIG_PARAVIRT_RCU_VCS
 #undef CONFIG_PARAVIRT_SPINLOCK_VCS
 #undef CONFIG_PARAVIRT_RWLOCK_WR_VCS
 #undef CONFIG_PARAVIRT_RWLOCK_RD_VCS
+/*******/
 #undef CONFIG_KASAN
 
 #include <linux/linkage.h>

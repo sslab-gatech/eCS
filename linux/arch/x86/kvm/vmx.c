@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-only
 /*
  * Kernel-based Virtual Machine driver for Linux
  *
@@ -1227,10 +1228,12 @@ static inline bool cpu_has_vmx_invept_global(void)
 	return vmx_capability.ept & VMX_EPT_EXTENT_GLOBAL_BIT;
 }
 
+/* eCS */
 static inline bool cpu_has_vmx_invvpid_single_addr(void)
 {
         return vmx_capability.vpid & VMX_VPID_EXTENT_INDIVIDUAL_ADDR_BIT;
 }
+/*******/
 
 static inline bool cpu_has_vmx_invvpid_single(void)
 {
@@ -4108,6 +4111,7 @@ static inline void __vmx_flush_tlb(struct kvm_vcpu *vcpu, int vpid)
 	}
 }
 
+/* eCS */
 static inline void __vmx_flush_tlb_addr(int vpid, unsigned long addr)
 {
         if (vpid == 0)
@@ -4118,16 +4122,19 @@ static inline void __vmx_flush_tlb_addr(int vpid, unsigned long addr)
         else
                 vpid_sync_context(vpid);
 }
+/*******/
 
 static void vmx_flush_tlb(struct kvm_vcpu *vcpu)
 {
 	__vmx_flush_tlb(vcpu, to_vmx(vcpu)->vpid);
 }
 
+/* eCS */
 static void vmx_flush_tlb_addr(struct kvm_vcpu *vcpu, unsigned long addr)
 {
         __vmx_flush_tlb_addr(to_vmx(vcpu)->vpid, addr);
 }
+/*******/
 
 static void vmx_flush_tlb_ept_only(struct kvm_vcpu *vcpu)
 {
@@ -11697,7 +11704,9 @@ static struct kvm_x86_ops vmx_x86_ops __ro_after_init = {
 	.set_rflags = vmx_set_rflags,
 
 	.tlb_flush = vmx_flush_tlb,
+/* eCS */
         .tlb_flush_addr = vmx_flush_tlb_addr,
+/*******/
 
 	.run = vmx_vcpu_run,
 	.handle_exit = vmx_handle_exit,

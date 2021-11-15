@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-only
 /*
  * Kernel-based Virtual Machine driver for Linux
  *
@@ -67,8 +68,10 @@
 #include <asm/div64.h>
 #include <asm/irq_remapping.h>
 
+/* eCS */
 #include <uapi/linux/sched/types.h>
 #include <linux/sched/stat.h>
+/*******/
 
 #define CREATE_TRACE_POINTS
 #include "trace.h"
@@ -78,10 +81,12 @@
 u64 __read_mostly kvm_mce_cap_supported = MCG_CTL_P | MCG_SER_P;
 EXPORT_SYMBOL_GPL(kvm_mce_cap_supported);
 
+/* eCS */
 #define KVM_MIN_NICE            (-6)
 #define KVM_NORMAL_NICE         (0)
 #define KVM_MAX_NICE            (7)
 #define MAX_EXTRA_SCHEDULES     (8)
+/*******/
 
 #define emul_to_vcpu(ctxt) \
 	container_of(ctxt, struct kvm_vcpu, arch.emulate_ctxt)
@@ -200,9 +205,11 @@ struct kvm_stats_debugfs_item debugfs_entries[] = {
 	{ "largepages", VM_STAT(lpages) },
 	{ "max_mmu_page_hash_collisions",
 		VM_STAT(max_mmu_page_hash_collisions) },
+/* eCS */
         { "fake_vcs", VCPU_STAT(fake_vcs) },
         { "vcs", VCPU_STAT(vcs) },
         { "avoided_preempts", VCPU_STAT(avoided_preempts) },
+/*******/
 	{ NULL }
 };
 
@@ -1012,7 +1019,7 @@ static u32 emulated_msrs[] = {
 	HV_X64_MSR_SCONTROL,
 	HV_X64_MSR_STIMER0_CONFIG,
 	HV_X64_MSR_APIC_ASSIST_PAGE, MSR_KVM_ASYNC_PF_EN, MSR_KVM_STEAL_TIME,
-        MSR_KVM_PV_EOI_EN,
+	MSR_KVM_PV_EOI_EN,
 
 	MSR_IA32_TSC_ADJUST,
 	MSR_IA32_TSCDEADLINE,
@@ -2126,11 +2133,12 @@ static void record_steal_time(struct kvm_vcpu *vcpu)
 		vcpu->arch.st.last_steal;
 	vcpu->arch.st.last_steal = current->sched_info.run_delay;
 
+/* eCS */
         vcpu->arch.st.steal.overloaded = !single_task_running();
+/*******/
 
 	kvm_write_guest_cached(vcpu->kvm, &vcpu->arch.st.stime,
 		&vcpu->arch.st.steal, sizeof(struct kvm_steal_time));
-
 
 	smp_wmb();
 
@@ -2279,6 +2287,7 @@ int kvm_set_msr_common(struct kvm_vcpu *vcpu, struct msr_data *msr_info)
 		if (kvm_lapic_enable_pv_eoi(vcpu, data))
 			return 1;
 		break;
+
 	case MSR_IA32_MCG_CTL:
 	case MSR_IA32_MCG_STATUS:
 	case MSR_IA32_MC0_CTL ... MSR_IA32_MCx_CTL(KVM_MAX_MCE_BANKS) - 1:
@@ -2828,6 +2837,7 @@ static bool need_emulate_wbinvd(struct kvm_vcpu *vcpu)
 	return kvm_arch_has_noncoherent_dma(vcpu->kvm);
 }
 
+/* eCS */
 static inline void kvm_migrate_timers(struct kvm_vcpu *vcpu)
 {
 	set_bit(KVM_REQ_MIGRATE_TIMER, &vcpu->requests);
@@ -2977,6 +2987,7 @@ int kvm_arch_check_schedule(struct kvm_vcpu *vcpu)
      out:
         return ret;
 }
+/*******/
 
 void kvm_arch_vcpu_load(struct kvm_vcpu *vcpu, int cpu)
 {
@@ -6398,6 +6409,7 @@ static void kvm_pv_kick_cpu_op(struct kvm *kvm, unsigned long flags, int apicid)
 	kvm_irq_delivery_to_apic(kvm, NULL, &lapic_irq, NULL);
 }
 
+/* eCS */
 #ifdef CONFIG_PARAVIRT_TLB
 
 static void kvm_remote_vcpu_tlb_shootdown(void *info)
@@ -6518,6 +6530,7 @@ static int kvm_vcpu_pv_wait(struct kvm_vcpu *vcpu)
         return kvm_vcpu_halt(vcpu);
 }
 #endif
+/*******/
 
 void kvm_vcpu_deactivate_apicv(struct kvm_vcpu *vcpu)
 {
@@ -6571,6 +6584,7 @@ int kvm_emulate_hypercall(struct kvm_vcpu *vcpu)
 		break;
 #endif
 
+/* eCS */
 #ifdef CONFIG_PARAVIRT_IPI
         case KVM_HC_IPI_DELIVERY:
                 ret = kvm_pv_handle_ipi(vcpu, a0, a1, a2);
@@ -6588,6 +6602,7 @@ int kvm_emulate_hypercall(struct kvm_vcpu *vcpu)
                 ret = kvm_vcpu_pv_wait(vcpu);
                 break;
 #endif
+/*******/
 
 	default:
 		ret = -KVM_ENOSYS;

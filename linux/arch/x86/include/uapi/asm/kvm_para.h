@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: GPL-2.0-only */
 #ifndef _UAPI_ASM_X86_KVM_PARA_H
 #define _UAPI_ASM_X86_KVM_PARA_H
 
@@ -41,6 +42,7 @@
 #define MSR_KVM_STEAL_TIME  0x4b564d03
 #define MSR_KVM_PV_EOI_EN      0x4b564d04
 
+/* eCS */
 struct kvm_steal_time {
         __u64 steal;
         __u32 version;
@@ -57,6 +59,7 @@ struct kvm_steal_time {
         __u8  pad1[1];
         __u32 pad[6];
 };
+/*******/
 
 #define KVM_CLOCK_PAIRING_WALLCLOCK 0
 struct kvm_clock_pairing {
@@ -117,6 +120,7 @@ struct kvm_vcpu_pv_apf_data {
 #define KVM_PV_EOI_ENABLED KVM_PV_EOI_MASK
 #define KVM_PV_EOI_DISABLED 0x0
 
+/* eCS */
 struct kvm_ipi_cpu_list {
         cpumask_t cpus;
 } ____cacheline_aligned_in_smp;
@@ -127,5 +131,6 @@ struct kvm_tlb_info {
         unsigned long flush_start;
         unsigned long flush_end;
 };
+/*******/
 
 #endif /* _UAPI_ASM_X86_KVM_PARA_H */

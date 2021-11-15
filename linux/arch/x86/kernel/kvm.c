@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 /*
  * KVM paravirt_ops implementation
  *
@@ -79,9 +80,11 @@ static DEFINE_PER_CPU(struct kvm_vcpu_pv_apf_data, apf_reason) __aligned(64);
 static DEFINE_PER_CPU(struct kvm_steal_time, steal_time) __aligned(64);
 static int has_steal_clock = 0;
 
+/* eCS */
 #ifdef CONFIG_PARAVIRT_IPI
 DEFINE_PER_CPU(struct kvm_ipi_cpu_list, ipi_cpu_list) __aligned(64);
 #endif
+/*******/
 
 /*
  * No need for any "IO delay" on KVM
@@ -329,8 +332,10 @@ static void kvm_guest_cpu_init(void)
 {
 	if (!kvm_para_available())
 		return;
+/* eCS */
 #if defined(CONFIG_PARAVIRT_ONLY_VCS)
 #else
+/*******/
 	if (kvm_para_has_feature(KVM_FEATURE_ASYNC_PF) && kvmapf) {
 		u64 pa = slow_virt_to_phys(this_cpu_ptr(&apf_reason));
 
@@ -347,7 +352,9 @@ static void kvm_guest_cpu_init(void)
 		printk(KERN_INFO"KVM setup async PF for cpu %d\n",
 		       smp_processor_id());
 	}
+/* eCS */
 #endif
+/*******/
 	if (kvm_para_has_feature(KVM_FEATURE_PV_EOI)) {
 		unsigned long pa;
 		/* Size alignment is implied but just to make it explicit. */
@@ -359,8 +366,10 @@ static void kvm_guest_cpu_init(void)
 	}
 	if (has_steal_clock)
 		kvm_register_steal_time();
+/* eCS */
 
         kvm_ipi_init();
+/*******/
 }
 
 static void kvm_pv_disable_apf(void)
@@ -384,11 +393,15 @@ static void kvm_pv_guest_cpu_reboot(void *unused)
 	 */
 	if (kvm_para_has_feature(KVM_FEATURE_PV_EOI))
 		wrmsrl(MSR_KVM_PV_EOI_EN, 0);
+/* eCS */
 
 #if defined(CONFIG_PARAVIRT_ONLY_VCS)
 #else
+/*******/
 	kvm_pv_disable_apf();
+/* eCS */
 #endif
+/*******/
 	kvm_disable_steal_time();
 }
 
@@ -435,20 +448,28 @@ static void __init kvm_smp_prepare_boot_cpu(void)
 	kvm_guest_cpu_init();
 	native_smp_prepare_boot_cpu();
 	kvm_spinlock_init();
+/* eCS */
         kvm_sched_init();
+/*******/
 }
 
 static void kvm_guest_cpu_offline(void)
 {
 	kvm_disable_steal_time();
+/* eCS */
         kvm_disable_ipi();
+/*******/
 	if (kvm_para_has_feature(KVM_FEATURE_PV_EOI))
 		wrmsrl(MSR_KVM_PV_EOI_EN, 0);
 	kvm_pv_disable_apf();
+/* eCS */
 #if defined(CONFIG_PARAVIRT_ONLY_VCS)
 #else
+/*******/
 	apf_task_wake_all();
+/* eCS */
 #endif
+/*******/
 }
 
 static int kvm_cpu_online(unsigned int cpu)
@@ -468,12 +489,16 @@ static int kvm_cpu_down_prepare(unsigned int cpu)
 }
 #endif
 
+/* eCS */
 #ifndef CONFIG_PARAVIRT_ONLY_VCS
+/*******/
 static void __init kvm_apf_trap_init(void)
 {
 	set_intr_gate(14, async_page_fault);
 }
+/* eCS */
 #endif
+/*******/
 
 void __init kvm_guest_init(void)
 {
@@ -488,10 +513,14 @@ void __init kvm_guest_init(void)
 		raw_spin_lock_init(&async_pf_sleepers[i].lock);
 
 	if (kvm_para_has_feature(KVM_FEATURE_ASYNC_PF))
+/* eCS */
 #ifdef CONFIG_PARAVIRT_ONLY_VCS
 #else
+/*******/
 		x86_init.irqs.trap_init = kvm_apf_trap_init;
+/* eCS */
 #endif
+/*******/
 
 	if (kvm_para_has_feature(KVM_FEATURE_STEAL_TIME)) {
 		has_steal_clock = 1;
@@ -577,6 +606,7 @@ static __init int activate_jump_labels(void)
 }
 arch_initcall(activate_jump_labels);
 
+/* eCS */
 #ifdef CONFIG_PARAVIRT_IPI
 
 static void kvm_handle_ipi(int op, u64 val1, u64 val2)
@@ -718,6 +748,7 @@ void __init kvm_sched_init(void)
 	}
 }
 #endif
+/*******/
 
 #ifdef CONFIG_PARAVIRT_SPINLOCKS
 
@@ -750,16 +781,20 @@ static void kvm_wait(u8 *ptr, u8 val)
 	 * for irq enabled case to avoid hang when lock info is overwritten
 	 * in irq spinlock slowpath and no spurious interrupt occur to save us.
 	 */
+/* eCS */
 #ifndef CONFIG_PARAVIRT_WAIT_HYPERCALL
+/*******/
 	if (arch_irqs_disabled_flags(flags))
 		halt();
 	else
 		safe_halt();
+/* eCS */
 #else
         if (!arch_irqs_disabled_flags(flags))
                 local_irq_disable();
         kvm_hypercall0(KVM_HC_WAIT);
 #endif
+/*******/
 
 out:
 	local_irq_restore(flags);

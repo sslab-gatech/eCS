@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-only
 /* rwsem.c: R/W semaphores: contention handling functions
  *
  * Written by David Howells (dhowells@redhat.com).
@@ -15,10 +16,14 @@
 #include <linux/sched/signal.h>
 #include <linux/sched/rt.h>
 #include <linux/sched/wake_q.h>
+/* eCS */
 #include <linux/sched/stat.h>
+/*******/
 #include <linux/sched/debug.h>
 #include <linux/osq_lock.h>
+/* eCS */
 #include <linux/paravirt.h>
+/*******/
 
 #include "rwsem.h"
 
@@ -343,7 +348,9 @@ static inline bool rwsem_can_spin_on_owner(struct rw_semaphore *sem)
 	 * As lock holder preemption issue, we both skip spinning if task is not
 	 * on cpu or its cpu is preempted
 	 */
+/* eCS */
 	ret = owner->on_cpu && !is_vcpu_preempted(task_cpu(owner));
+/*******/
 done:
 	rcu_read_unlock();
 	return ret;
@@ -373,11 +380,13 @@ static noinline bool rwsem_spin_on_owner(struct rw_semaphore *sem)
 		 * abort spinning when need_resched or owner is not running or
 		 * owner's cpu is preempted.
 		 */
+/* eCS */
 		if (!owner->on_cpu || need_resched() ||
 				is_vcpu_preempted(task_cpu(owner))) {
 			rcu_read_unlock();
 			return false;
 		}
+/*******/
 
 		cpu_relax();
 	}
@@ -537,6 +546,7 @@ __rwsem_down_write_failed_common(struct rw_semaphore *sem, int state)
 			if (signal_pending_state(state, current))
 				goto out_nolock;
 
+/* eCS */
 #ifdef CONFIG_PARAVIRT_VCS
                         if (!vcpu_pcpu_is_overloaded(task_cpu(current)) &&
                             single_task_running()) {
@@ -552,6 +562,7 @@ __rwsem_down_write_failed_common(struct rw_semaphore *sem, int state)
                         schedule();
                         set_current_state(state);
 #endif
+/*******/
 		} while ((count = atomic_long_read(&sem->count)) & RWSEM_ACTIVE_MASK);
 
 		raw_spin_lock_irq(&sem->wait_lock);

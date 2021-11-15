@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: GPL-2.0-or-later */
 /*
  * Read-Copy Update mechanism for mutual exclusion
  *
@@ -43,10 +44,12 @@
 #include <asm/processor.h>
 #include <linux/cpumask.h>
 
+/* eCS */
 #ifdef CONFIG_PARAVIRT_VCS
 #include <linux/smp.h>
 #include <asm/paravirt.h>
 #endif
+/*******/
 
 #define ULONG_CMP_GE(a, b)	(ULONG_MAX / 2 >= (a) - (b))
 #define ULONG_CMP_LT(a, b)	(ULONG_MAX / 2 < (a) - (b))
@@ -610,9 +613,11 @@ static inline void rcu_preempt_sleep_check(void) { }
 static inline void rcu_read_lock(void)
 {
 	__rcu_read_lock();
+/* eCS */
 #if defined(CONFIG_PARAVIRT_RCU_VCS)
         vcpu_preempt_count(smp_processor_id(), 1, KVM_RCU_READER);
 #endif
+/*******/
 	__acquire(RCU);
 	rcu_lock_acquire(&rcu_lock_map);
 	RCU_LOCKDEP_WARN(!rcu_is_watching(),
@@ -669,9 +674,11 @@ static inline void rcu_read_unlock(void)
 	RCU_LOCKDEP_WARN(!rcu_is_watching(),
 			 "rcu_read_unlock() used illegally while idle");
 	__release(RCU);
+/* eCS */
 #if defined(CONFIG_PARAVIRT_RCU_VCS)
         vcpu_preempt_count(smp_processor_id(), -1, KVM_NO_CS);
 #endif
+/*******/
 	__rcu_read_unlock();
 	rcu_lock_release(&rcu_lock_map); /* Keep acq info for rls diags. */
 }

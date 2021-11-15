@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-only
 #ifndef __LINUX_KBUILD_H
 # error "Please do not build this file directly, build asm-offsets.c instead"
 #endif
@@ -13,7 +14,9 @@ static char syscalls_ia32[] = {
 #include <asm/syscalls_32.h>
 };
 
+/* eCS */
 #if defined(CONFIG_KVM_GUEST) && (defined(CONFIG_PARAVIRT_SPINLOCKS) || defined(CONFIG_PARAVIRT_VCS))
+/*******/
 #include <asm/kvm_para.h>
 #endif
 
@@ -29,11 +32,13 @@ int main(void)
 #if defined(CONFIG_KVM_GUEST) && defined(CONFIG_PARAVIRT_SPINLOCKS)
 	OFFSET(KVM_STEAL_TIME_preempted, kvm_steal_time, preempted);
 	BLANK();
+/* eCS */
 #endif
 
 #if defined(CONFIG_KVM_GUEST) && defined(CONFIG_PARAVIRT_VCS)
         OFFSET(KVM_STEAL_TIME_preempted, kvm_steal_time, preempted);
         BLANK();
+/*******/
 #endif
 
 #define ENTRY(entry) OFFSET(pt_regs_ ## entry, pt_regs, entry)

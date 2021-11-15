@@ -1,3 +1,4 @@
+/* SPDX-Licence-Identifier: GPL-2.0-only */
 #ifndef _ASM_X86_PARAVIRT_TYPES_H
 #define _ASM_X86_PARAVIRT_TYPES_H
 
@@ -307,6 +308,7 @@ struct pv_mmu_ops {
 			   phys_addr_t phys, pgprot_t flags);
 } __no_randomize_layout;
 
+/* eCS */
 #ifdef CONFIG_PARAVIRT_VCS
 struct pv_sched_ops {
 	struct paravirt_callee_save vcpu_is_preempted;
@@ -324,6 +326,7 @@ struct pv_ipi_ops {
         void (*update_cpumask)(struct cpumask *mask);
 } __no_randomize_layout;
 #endif
+/*******/
 
 struct arch_spinlock;
 #ifdef CONFIG_SMP
@@ -352,12 +355,14 @@ struct paravirt_patch_template {
 	struct pv_irq_ops pv_irq_ops;
 	struct pv_mmu_ops pv_mmu_ops;
 	struct pv_lock_ops pv_lock_ops;
+/* eCS */
 #ifdef CONFIG_PARAVIRT_VCS
         struct pv_sched_ops pv_sched_ops;
 #endif
 #ifdef CONFIG_PARAVIRT_IPI
         struct pv_ipi_ops pv_ipi_ops;
 #endif
+/*******/
 } __no_randomize_layout;
 
 extern struct pv_info pv_info;
@@ -367,12 +372,14 @@ extern struct pv_cpu_ops pv_cpu_ops;
 extern struct pv_irq_ops pv_irq_ops;
 extern struct pv_mmu_ops pv_mmu_ops;
 extern struct pv_lock_ops pv_lock_ops;
+/* eCS */
 #ifdef CONFIG_PARAVIRT_VCS
 extern struct pv_sched_ops pv_sched_ops;
 #endif
 #ifdef CONFIG_PARAVIRT_IPI
 extern struct pv_ipi_ops pv_ipi_ops;
 #endif
+/*******/
 
 #define PARAVIRT_PATCH(x)					\
 	(offsetof(struct paravirt_patch_template, x) / sizeof(void *))

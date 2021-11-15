@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: GPL-2.0-only */
 #ifndef __KVM_HOST_H
 #define __KVM_HOST_H
 
@@ -272,11 +273,14 @@ struct kvm_vcpu {
 	} spin_loop;
 #endif
 	bool preempted;
+/* eCS */
 #if defined(CONFIG_PARAVIRT_IPI) || defined(CONFIG_PARAVIRT_VCS)
         atomic64_t sched_count;
 #endif
+/*******/
 	struct kvm_vcpu_arch arch;
 	struct dentry *debugfs_dentry;
+/* eCS */
         /* Version to figure out the CS */
         unsigned int cs_version;
         /* Extra time spent */
@@ -285,6 +289,7 @@ struct kvm_vcpu {
         u64 num_extra_schedules;
         /* current task nice value */
         int nice_value;
+/*******/
 };
 
 static inline int kvm_vcpu_exiting_guest_mode(struct kvm_vcpu *vcpu)
@@ -400,7 +405,9 @@ struct kvm_memslots {
 struct kvm {
 	spinlock_t mmu_lock;
 	struct mutex slots_lock;
+/* eCS */
         bool should_boost;
+/*******/
 	struct mm_struct *mm; /* userspace tied to this vm */
 	struct kvm_memslots __rcu *memslots[KVM_ADDRESS_SPACE_NUM];
 	struct kvm_vcpu *vcpus[KVM_MAX_VCPUS];
@@ -414,7 +421,9 @@ struct kvm {
 	atomic_t online_vcpus;
 	int created_vcpus;
 	int last_boosted_vcpu;
+/* eCS */
         int vm_id;
+/*******/
 	struct list_head vm_list;
 	struct mutex lock;
 	struct kvm_io_bus __rcu *buses[KVM_NR_BUSES];
@@ -452,9 +461,11 @@ struct kvm {
 	unsigned long mmu_notifier_seq;
 	long mmu_notifier_count;
 #endif
+/* eCS */
 #ifdef CONFIG_PARAVIRT_IPI
         u64 guest_x86_to_apicid_list[KVM_MAX_VCPUS];
 #endif
+/*******/
 	long tlbs_dirty;
 	struct list_head devices;
 	struct dentry *debugfs_dentry;
@@ -801,9 +812,11 @@ void kvm_arch_sched_in(struct kvm_vcpu *vcpu, int cpu);
 
 void kvm_arch_vcpu_free(struct kvm_vcpu *vcpu);
 void kvm_arch_vcpu_load(struct kvm_vcpu *vcpu, int cpu);
+/* eCS */
 int kvm_arch_check_and_update_schedule(struct kvm_vcpu *vcpu);
 void kvm_vcpu_update_vcs_stat(struct kvm_vcpu *vcpu);
 int kvm_arch_check_schedule(struct kvm_vcpu *vcpu);
+/*******/
 void kvm_arch_vcpu_put(struct kvm_vcpu *vcpu);
 struct kvm_vcpu *kvm_arch_vcpu_create(struct kvm *kvm, unsigned int id);
 int kvm_arch_vcpu_setup(struct kvm_vcpu *vcpu);
@@ -1267,8 +1280,7 @@ static inline bool vcpu_valid_wakeup(struct kvm_vcpu *vcpu)
 	return true;
 }
 #endif /* CONFIG_HAVE_KVM_INVALID_WAKEUPS */
-
-
+/* eCS */
 #ifdef CONFIG_PARAVIRT_TLB
 struct vcpu_tlb_info {
         struct kvm_vcpu *vcpu;
@@ -1276,5 +1288,6 @@ struct vcpu_tlb_info {
         unsigned long end;
 };
 #endif
+/*******/
 
 #endif

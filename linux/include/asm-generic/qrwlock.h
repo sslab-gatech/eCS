@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: GPL-2.0-or-later */
 /*
  * Queue read/write lock
  *
@@ -24,10 +25,12 @@
 
 #include <asm-generic/qrwlock_types.h>
 
+/* eCS */
 #ifdef CONFIG_PARAVIRT_VCS
 #include <asm/paravirt.h>
 DECLARE_PER_CPU_READ_MOSTLY(int, cpu_number);
 #endif
+/*******/
 
 /*
  * Writer states & reader shift and bias.
@@ -87,13 +90,17 @@ static inline int queued_read_trylock(struct qrwlock *lock)
 	cnts = atomic_read(&lock->cnts);
 	if (likely(!(cnts & _QW_WMASK))) {
 		cnts = (u32)atomic_add_return_acquire(_QR_BIAS, &lock->cnts);
+/* eCS */
 		if (likely(!(cnts & _QW_WMASK))) {
 #ifdef CONFIG_PARAVIRT_RWLOCK_RD_VCS
                         vcpu_preempt_count(this_cpu_read(cpu_number), 1,
                                            KVM_RWL_READER);
 #endif
+/*******/
 			return 1;
+/* eCS */
                 }
+/*******/
 		atomic_sub(_QR_BIAS, &lock->cnts);
 	}
 	return 0;
@@ -107,12 +114,15 @@ static inline int queued_read_trylock(struct qrwlock *lock)
 static inline int queued_write_trylock(struct qrwlock *lock)
 {
 	u32 cnts;
+/* eCS */
         int ret;
+/*******/
 
 	cnts = atomic_read(&lock->cnts);
 	if (unlikely(cnts))
 		return 0;
 
+/* eCS */
 	ret = atomic_cmpxchg_acquire(&lock->cnts,
                                      cnts, cnts | _QW_LOCKED) == cnts;
         if (likely(ret)) {
@@ -122,6 +132,7 @@ static inline int queued_write_trylock(struct qrwlock *lock)
 #endif
         }
         return ret;
+/*******/
 }
 /**
  * queued_read_lock - acquire read lock of a queue rwlock
@@ -132,19 +143,25 @@ static inline void queued_read_lock(struct qrwlock *lock)
 	u32 cnts;
 
 	cnts = atomic_add_return_acquire(_QR_BIAS, &lock->cnts);
+/* eCS */
 	if (likely(!(cnts & _QW_WMASK))) {
 #ifdef CONFIG_PARAVIRT_RWLOCK_RD_VCS
                 vcpu_preempt_count(this_cpu_read(cpu_number), 1,
                                    KVM_RWL_READER);
 #endif
+/*******/
 		return;
+/* eCS */
         }
+/*******/
 
 	/* The slowpath will decrement the reader count, if necessary. */
 	queued_read_lock_slowpath(lock, cnts);
+/* eCS */
 #ifdef CONFIG_PARAVIRT_RWLOCK_RD_VCS
         vcpu_preempt_count(this_cpu_read(cpu_number), 1, KVM_RWL_READER);
 #endif
+/*******/
 }
 
 /**
@@ -154,18 +171,24 @@ static inline void queued_read_lock(struct qrwlock *lock)
 static inline void queued_write_lock(struct qrwlock *lock)
 {
 	/* Optimize for the unfair lock case where the fair flag is 0. */
+/* eCS */
 	if (atomic_cmpxchg_acquire(&lock->cnts, 0, _QW_LOCKED) == 0) {
 #ifdef CONFIG_PARAVIRT_RWLOCK_WR_VCS
                 vcpu_preempt_count(this_cpu_read(cpu_number), 1,
                                    KVM_RWL_WRITER);
 #endif
+/*******/
 		return;
+/* eCS */
         }
+/*******/
 
 	queued_write_lock_slowpath(lock);
+/* eCS */
 #ifdef CONFIG_PARAVIRT_RWLOCK_WR_VCS
         vcpu_preempt_count(this_cpu_read(cpu_number), 1, KVM_RWL_WRITER);
 #endif
+/*******/
 }
 
 /**
@@ -178,9 +201,11 @@ static inline void queued_read_unlock(struct qrwlock *lock)
 	 * Atomically decrement the reader count
 	 */
 	(void)atomic_sub_return_release(_QR_BIAS, &lock->cnts);
+/* eCS */
 #ifdef CONFIG_PARAVIRT_RWLOCK_RD_VCS
         vcpu_preempt_count(this_cpu_read(cpu_number), -1, KVM_NO_CS);
 #endif
+/*******/
 }
 
 /**
@@ -200,9 +225,11 @@ static inline u8 *__qrwlock_write_byte(struct qrwlock *lock)
 static inline void queued_write_unlock(struct qrwlock *lock)
 {
 	smp_store_release(__qrwlock_write_byte(lock), 0);
+/* eCS */
 #ifdef CONFIG_PARAVIRT_RWLOCK_WR_VCS
         vcpu_preempt_count(this_cpu_read(cpu_number), -1, KVM_NO_CS);
 #endif
+/*******/
 }
 
 /*

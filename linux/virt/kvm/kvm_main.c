@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-only
 /*
  * Kernel-based Virtual Machine driver for Linux
  *
@@ -51,7 +52,9 @@
 #include <linux/slab.h>
 #include <linux/sort.h>
 #include <linux/bsearch.h>
+/* eCS */
 #include <linux/kthread.h>
+/*******/
 
 #include <asm/processor.h>
 #include <asm/io.h>
@@ -126,6 +129,7 @@ static void kvm_io_bus_destroy(struct kvm_io_bus *bus);
 static void kvm_release_pfn_dirty(kvm_pfn_t pfn);
 static void mark_page_dirty_in_slot(struct kvm_memory_slot *memslot, gfn_t gfn);
 
+/* eCS */
 /* Round robin passing of the token for scheduler boosting */
 /* static int kvm_vm_id = 0; */
 /* static int kvm_curr_serving_vm_id = 1; */
@@ -134,7 +138,7 @@ static void mark_page_dirty_in_slot(struct kvm_memory_slot *memslot, gfn_t gfn);
 
 static long kvm_sched_timeout = 1 * HZ;
 module_param(kvm_sched_timeout, long, S_IRUGO | S_IWUSR);
-
+/*******/
 
 __visible bool kvm_rebooting;
 EXPORT_SYMBOL_GPL(kvm_rebooting);
@@ -285,9 +289,11 @@ int kvm_vcpu_init(struct kvm_vcpu *vcpu, struct kvm *kvm, unsigned id)
 	vcpu->kvm = kvm;
 	vcpu->vcpu_id = id;
 	vcpu->pid = NULL;
+/* eCS */
         vcpu->cs_version = 0;
         vcpu->num_extra_schedules = 0;
         vcpu->extra_time = 0;
+/*******/
 	init_swait_queue_head(&vcpu->wq);
 	kvm_async_pf_vcpu_init(vcpu);
 
@@ -303,10 +309,12 @@ int kvm_vcpu_init(struct kvm_vcpu *vcpu, struct kvm *kvm, unsigned id)
 
 	kvm_vcpu_set_in_spin_loop(vcpu, false);
 	kvm_vcpu_set_dy_eligible(vcpu, false);
+/* eCS */
 	smp_store_release(&vcpu->preempted, false);
 #if defined(CONFIG_PARAVIRT_IPI) || defined(CONFIG_PARAVIRT_VCS)
         atomic64_set(&vcpu->sched_count, 0);
 #endif
+/*******/
 
 	r = kvm_arch_vcpu_init(vcpu);
 	if (r < 0)
@@ -682,7 +690,9 @@ static struct kvm *kvm_create_vm(unsigned long type)
 	spin_unlock(&kvm_lock);
 
 	preempt_notifier_inc();
+/* eCS */
         kvm->should_boost = false;
+/*******/
 
 	return kvm;
 
@@ -2295,6 +2305,7 @@ static bool kvm_vcpu_eligible_for_directed_yield(struct kvm_vcpu *vcpu)
 #endif
 }
 
+/* eCS */
 #ifdef CONFIG_PARAVIRT_VCS
 static inline int kvm_vcpu_vcs_check(struct kvm_vcpu *vcpu)
 {
@@ -2305,6 +2316,7 @@ static inline int kvm_vcpu_vcs_check(struct kvm_vcpu *vcpu)
 }
 
 #endif
+/*******/
 
 void kvm_vcpu_on_spin(struct kvm_vcpu *me)
 {
@@ -2324,6 +2336,7 @@ void kvm_vcpu_on_spin(struct kvm_vcpu *me)
 	 * VCPU is holding the lock that we need and will release it.
 	 * We approximate round-robin by starting at the last boosted VCPU.
 	 */
+/* eCS */
 #ifdef CONFIG_PARAVIRT_VCS
         kvm_for_each_vcpu(i, vcpu, kvm) {
                 if (vcpu == me)
@@ -2343,6 +2356,7 @@ void kvm_vcpu_on_spin(struct kvm_vcpu *me)
         if (!(yielded > 0))
                 yielded = 0;
 #endif
+/*******/
 	for (pass = 0; pass < 2 && !yielded && try; pass++) {
 		kvm_for_each_vcpu(i, vcpu, kvm) {
 			if (!pass && i <= last_boosted_vcpu) {
@@ -3990,12 +4004,14 @@ static void kvm_sched_in(struct preempt_notifier *pn, int cpu)
 {
 	struct kvm_vcpu *vcpu = preempt_notifier_to_vcpu(pn);
 
+/* eCS */
 	if (vcpu->preempted) {
 		smp_store_release(&vcpu->preempted, false);
 #if defined(CONFIG_PARAVIRT_IPI) || defined(CONFIG_PARAVIRT_VCS)
                 atomic64_inc(&vcpu->sched_count);
 #endif
         }
+/*******/
 
 	kvm_arch_sched_in(vcpu, cpu);
 
@@ -4007,6 +4023,7 @@ static void kvm_sched_out(struct preempt_notifier *pn,
 {
 	struct kvm_vcpu *vcpu = preempt_notifier_to_vcpu(pn);
 
+/* eCS */
 	if (current->state == TASK_RUNNING) {
                 /*
                  * Check if there are any schedules required, if Yes, then
@@ -4043,9 +4060,11 @@ static void kvm_sched_out(struct preempt_notifier *pn,
 #endif
         }
      /* out: */
+/*******/
 	kvm_arch_vcpu_put(vcpu);
 }
 
+/* eCS */
 static int kvm_sched_check(struct preempt_notifier *pn)
 {
         struct kvm_vcpu *vcpu = preempt_notifier_to_vcpu(pn);
@@ -4096,6 +4115,7 @@ static int kvm_sched_check(struct preempt_notifier *pn)
 /*         atomic_set(&kvm_deinit, 2); */
 /*         return 0; */
 /* } */
+/*******/
 
 int kvm_init(void *opaque, unsigned vcpu_size, unsigned vcpu_align,
 		  struct module *module)
@@ -4169,7 +4189,9 @@ int kvm_init(void *opaque, unsigned vcpu_size, unsigned vcpu_align,
 
 	kvm_preempt_ops.sched_in = kvm_sched_in;
 	kvm_preempt_ops.sched_out = kvm_sched_out;
+/* eCS */
         kvm_preempt_ops.sched_check = kvm_sched_check;
+/*******/
 
 	r = kvm_init_debug();
 	if (r) {
@@ -4177,6 +4199,7 @@ int kvm_init(void *opaque, unsigned vcpu_size, unsigned vcpu_align,
 		goto out_undebugfs;
 	}
 
+/* eCS */
         /* kvm_sched_task = kthread_create(kvm_schedule_token_func, NULL, */
         /*                                 "KVM Schedule token function"); */
         /* if (IS_ERR(kvm_sched_task)) { */
@@ -4184,6 +4207,7 @@ int kvm_init(void *opaque, unsigned vcpu_size, unsigned vcpu_align,
         /*         goto out_undebugfs; */
         /* } */
         /* wake_up_process(kvm_sched_task); */
+/*******/
 
 	r = kvm_vfio_ops_init();
 	WARN_ON(r);
@@ -4216,9 +4240,11 @@ EXPORT_SYMBOL_GPL(kvm_init);
 
 void kvm_exit(void)
 {
+/* eCS */
         /* atomic_set(&kvm_deinit, 1); */
         /* while (atomic_read(&kvm_deinit) != 2) */
                 /* smp_rmb(); */
+/*******/
 
 	debugfs_remove_recursive(kvm_debugfs_dir);
 	misc_deregister(&kvm_dev);

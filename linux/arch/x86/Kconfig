@@ -747,12 +747,14 @@ config PARAVIRT_SPINLOCKS
 
 	  If you are unsure how to answer this question, answer Y.
 
+# eCS
 config PARAVIRT_WAIT_HYPERCALL
 	bool "wait hypercall"
 	depends on PARAVIRT_SPINLOCKS
         default n
 	---help---
           Paravirtualized wait hypercall.
+###
 
 config QUEUED_LOCK_STAT
 	bool "Paravirt queued spinlock statistics"
@@ -762,6 +764,7 @@ config QUEUED_LOCK_STAT
 	  behavior of paravirtualized queued spinlocks and report
 	  them on debugfs.
 
+# eCS
 config QUEUED_NUMA_LOCK_STEAL
         bool "NUMA aware lock stealing"
         depends on ARCH_USE_QUEUED_SPINLOCKS && PARAVIRT_SPINLOCKS
@@ -769,7 +772,7 @@ config QUEUED_NUMA_LOCK_STEAL
         ---help---
           Only allow the steals from the same NUMA domain to steal the lock
           to mitigate the cacheline bouncing.
-
+###
 
 source "arch/x86/xen/Kconfig"
 
@@ -796,6 +799,7 @@ config KVM_DEBUG_FS
 
 source "arch/x86/lguest/Kconfig"
 
+# eCS
 config PARAVIRT_ONLY_VCS
         bool "Only expose virtualized critical sections, disable other pvops"
         depends on PARAVIRT
@@ -873,6 +877,7 @@ config PARAVIRT_INTR_CTX_VCS
         default y
         ---help---
           Expose the interrupt context to the hypervisor
+###
 
 config PARAVIRT_TIME_ACCOUNTING
 	bool "Paravirtual steal time accounting"
@@ -886,6 +891,7 @@ config PARAVIRT_TIME_ACCOUNTING
 
 	  If in doubt, say N here.
 
+#eCS
 config PARAVIRT_IPI
         bool "Enable paravirtual interface for IPI"
         depends on PARAVIRT
@@ -902,6 +908,7 @@ config PARAVIRT_TLB
         default n
         ---help---
           This option uses a single hypercall and issues invvpid on the hypervisor side.
+###
 
 config PARAVIRT_CLOCK
 	bool
